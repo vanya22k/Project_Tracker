@@ -1044,13 +1044,17 @@ function renderStakeholders(str) {
 }
 
 function renderProjectCard(p, canEdit) {
+  const isAdmin = state.user.role === 'Admin';
   const editControls = canEdit ? `
     <div class="inline-edit-row">
       <select class="inline-select" onchange="updateProjectField('${p.projectId}','status',this.value)">
         ${PROJECT_STATUSES.map(s => `<option value="${s}" ${p.status===s?'selected':''}>${s==='Open'?'Open / To Be Picked':s}</option>`).join('')}
       </select>
-      <input type="date" class="inline-date" value="${formatDateInput(p.eta)}" onchange="updateProjectField('${p.projectId}','eta',this.value)">
+      ${isAdmin
+        ? `<input type="date" class="inline-date" value="${formatDateInput(p.eta)}" onchange="updateProjectField('${p.projectId}','eta',this.value)">`
+        : `<span class="pill pill-neutral" title="Only Admin can change the deadline">🔒 ETA: ${formatDateDisplay(p.eta)}</span>`}
       ${p.status==='Completed' ? `<input type="date" class="inline-date" value="${formatDateInput(p.actualCompletionDate)}" placeholder="Completion date" onchange="updateProjectField('${p.projectId}','actualCompletionDate',this.value)">` : ''}
+      <button class="btn btn-ghost btn-sm" onclick="openEditProjectModal('${p.projectId}')">Edit details</button>
     </div>` : '';
 
   return `<div class="item-card">
@@ -1076,35 +1080,114 @@ function renderProjectCard(p, canEdit) {
   </div>`;
 }
 
+function openEditProjectModal(projectId) {
+  const p = state.workspaceData.projects.find(x => x.projectId === projectId);
+  if (!p) return;
+  const isAdmin = state.user.role === 'Admin';
+  openModal(`
+    <div class="modal-header"><h2>Edit Project Details</h2><button class="modal-close" onclick="closeModal()">✕</button></div>
+    <div class="modal-body">
+      <div class="field"><label>Project Name</label><input id="epName" value="${escapeAttr(p.projectName)}"></div>
+      <div class="field"><label>Description</label><textarea id="epDesc">${escapeHtml(p.description || '')}</textarea></div>
+      <div class="field"><label>Impact</label><input id="epImpact" value="${escapeAttr(p.impact || '')}"></div>
+      <div class="field"><label>Priority</label><select id="epPriority">${PRIORITIES.map(pr => `<option value="${pr}" ${p.priority===pr?'selected':''}>${pr}</option>`).join('')}</select></div>
+      <div class="field"><label>Dependency</label><input id="epDependency" value="${escapeAttr(p.dependency || '')}"></div>
+      <div class="field"><label>Stakeholders</label><input id="epStakeholders" value="${escapeAttr(p.stakeholders || '')}" placeholder="e.g. Ops team, Finance (optional)"></div>
+      <div class="field">
+        <label>ETA (Deadline)</label>
+        ${isAdmin
+          ? `<input type="date" id="epEta" value="${formatDateInput(p.eta)}">`
+          : `<input value="${formatDateDisplay(p.eta)}" disabled style="opacity:.6;cursor:not-allowed;">
+             <p style="font-size:12px;color:var(--ink-faint);margin-top:6px;">🔒 Only Admin can change the deadline. Ask them if this needs to move.</p>`}
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="closeModal()">Cancel</button>
+      <button class="btn btn-primary" onclick="submitEditProject('${projectId}')">Save Changes</button>
+    </div>
+  `);
+}
+
+async function submitEditProject(projectId) {
+  const updates = {
+    projectName: val('epName'), description: val('epDesc'), impact: val('epImpact'),
+    priority: val('epPriority'), dependency: val('epDependency'), stakeholders: val('epStakeholders')
+  };
+  if (state.user.role === 'Admin') {
+    const etaEl = document.getElementById('epEta');
+    if (etaEl) updates.eta = etaEl.value;
+  }
+  if (!updates.projectName) { showToast('⚠️ Project name is required'); return; }
+  const res = await apiCall('updateProject', { projectId, updates });
+  if (!res.ok) { showToast('⚠️ ' + res.error); return; }
+  closeModal(); showToast('✓ Project details updated');
+  await openWorkspace(state.currentWorkspaceUserId);
+}
+
 function renderCheckinRow(p) {
   const logged = !!p.loggedToday;
   return `<div class="checkin-row ${logged ? 'logged' : ''}">
     <input type="checkbox" id="checkin-${p.projectId}" ${logged ? 'checked' : ''} onchange="onCheckinToggle('${p.projectId}', this)">
     <label class="checkin-label" for="checkin-${p.projectId}">${logged ? '✓ Logged work on this today' : 'I worked on this project today'}</label>
+    ${logged ? `<button class="link-btn" style="margin-left:auto;font-size:12px;" onclick="openProjectCheckinEdit('${p.projectId}', event)">Edit</button>` : ''}
   </div>
   ${logged && p.todaysLogDescription ? `<div class="checkin-note">"${escapeHtml(p.todaysLogDescription)}"</div>` : ''}`;
 }
 
 function onCheckinToggle(projectId, checkbox) {
-  if (!checkbox.checked) { checkbox.checked = true; return; } // logging can't be un-done from here, only edited
+  if (checkbox.checked) {
+    checkbox.checked = false; // don't flip visually until saved
+    openCheckinModal(projectId, '');
+  } else {
+    checkbox.checked = true; // don't flip visually until confirmed
+    if (!confirm("Remove today's check-in for this project?")) { checkbox.checked = true; return; }
+    removeCheckin(projectId);
+  }
+}
+
+function openProjectCheckinEdit(projectId, event) {
+  event.stopPropagation();
+  const d = state.workspaceData;
+  const project = d.projects.find(p => p.projectId === projectId);
+  openCheckinModal(projectId, project ? project.todaysLogDescription : '');
+}
+
+function openCheckinModal(projectId, existingText) {
   openModal(`
     <div class="modal-header"><h2>What did you work on?</h2><button class="modal-close" onclick="closeModal()">✕</button></div>
     <div class="modal-body">
-      <div class="field"><label>Quick explanation</label><textarea id="checkinDesc" placeholder="e.g. Followed up with vendor, updated the cost sheet..." autofocus></textarea></div>
+      <div class="field"><label>Quick explanation (optional)</label><textarea id="checkinDesc" placeholder="e.g. Followed up with vendor, updated the cost sheet...">${escapeHtml(existingText || '')}</textarea></div>
+      <p style="font-size:12px;color:var(--ink-faint);margin-top:-8px;">Leave it blank if you just want to log that you worked on this today — a note just helps everyone stay in the loop.</p>
     </div>
     <div class="modal-footer">
       <button class="btn btn-ghost" onclick="closeModal()">Cancel</button>
-      <button class="btn btn-primary" onclick="submitCheckin('${projectId}')">Log it</button>
+      <button class="btn btn-primary" onclick="submitCheckin('${projectId}')">${existingText ? 'Save changes' : 'Log it'}</button>
     </div>
   `);
+  setTimeout(() => document.getElementById('checkinDesc') && document.getElementById('checkinDesc').focus(), 50);
+}
+
+const JUNK_ANSWERS = ['na', 'n/a', 'not applicable', 'none', 'nil', '-', 'nothing',
+  'xyz', 'test', 'asdf', 'tbd', 'pending', 'ok', 'done', '...', '.', 'abc', 'idk'];
+
+function isJunkDescription(text) {
+  const normalized = String(text).trim().toLowerCase().replace(/[.\-_!]+$/g, '');
+  return normalized.length < 8 || JUNK_ANSWERS.includes(normalized);
 }
 
 async function submitCheckin(projectId) {
   const description = val('checkinDesc');
-  if (!description) { showToast('⚠️ A short explanation is required'); return; }
+  if (description && isJunkDescription(description)) { showToast('⚠️ Leave it blank or write a real explanation'); return; }
   const res = await apiCall('logDailyWork', { projectId, description });
   if (!res.ok) { showToast('⚠️ ' + res.error); return; }
   closeModal(); showToast('✓ Logged — thanks for keeping this updated');
+  await openWorkspace(state.currentWorkspaceUserId);
+}
+
+async function removeCheckin(projectId) {
+  const res = await apiCall('deleteDailyWork', { projectId });
+  if (!res.ok) { showToast('⚠️ ' + res.error); return; }
+  showToast('✓ Removed');
   await openWorkspace(state.currentWorkspaceUserId);
 }
 
@@ -1165,7 +1248,7 @@ function openProjectModal() {
       <div class="field"><label>Impact</label><input id="pmImpact" placeholder="e.g. Reduce cost"></div>
       <div class="field"><label>Priority</label><select id="pmPriority">${PRIORITIES.map(p => `<option value="${p}">${p}</option>`).join('')}</select></div>
       <div class="field"><label>Dependency</label><input id="pmDependency" placeholder="Optional"></div>
-      <div class="field"><label>Stakeholders</label><input id="pmStakeholders" placeholder="Manager → Ops → Finance"></div>
+      <div class="field"><label>Stakeholders</label><input id="pmStakeholders" placeholder="e.g. Ops team, Finance (optional)"></div>
     </div>
     <div class="modal-footer">
       <button class="btn btn-ghost" onclick="closeModal()">Cancel</button>
