@@ -1,0 +1,1388 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Townhall</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=Manrope:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@500;600&display=swap" rel="stylesheet">
+<style>
+/* ============================================================
+   TOWNHALL — Design tokens
+   ============================================================ */
+:root{
+  --bg:#F3F4F9;
+  --surface:#FFFFFF;
+  --surface-alt:#F7F8FB;
+  --border:#E2E4EC;
+  --ink:#1E2233;
+  --ink-soft:#5B6072;
+  --ink-faint:#9498A8;
+  --primary:#4F5FE0;
+  --primary-dark:#3F4DC4;
+  --primary-soft:#EBEDFB;
+  --warm:#C98A2E;
+  --warm-dark:#A9701E;
+  --warm-soft:#F7EDDC;
+  --green:#1E8E5A;
+  --green-soft:#E4F3EC;
+  --amber:#B97A1D;
+  --amber-soft:#F6ECDA;
+  --red:#C4432E;
+  --red-soft:#FAE8E4;
+  --shadow-sm:0 1px 2px rgba(30,34,51,0.05);
+  --shadow-md:0 4px 16px rgba(30,34,51,0.07);
+  --shadow-lg:0 16px 40px rgba(30,34,51,0.14);
+  --radius-sm:6px;
+  --radius-md:10px;
+  --radius-lg:14px;
+  --font-display:'Fraunces', serif;
+  --font-body:'Manrope', sans-serif;
+  --font-mono:'IBM Plex Mono', monospace;
+}
+
+*{box-sizing:border-box;}
+html,body{margin:0;padding:0;}
+body{
+  background:var(--bg);
+  font-family:var(--font-body);
+  color:var(--ink);
+  min-height:100vh;
+  -webkit-font-smoothing:antialiased;
+}
+button{font-family:inherit;cursor:pointer;}
+input,select,textarea{font-family:inherit;}
+a{color:inherit;}
+::selection{background:var(--warm-soft);}
+
+/* subtle ambient blobs on auth screen */
+.blob{position:fixed;border-radius:50%;filter:blur(80px);opacity:0.18;z-index:0;pointer-events:none;}
+
+/* ============================================================
+   Layout shells
+   ============================================================ */
+#app{min-height:100vh;}
+.hidden{display:none !important;}
+
+.topbar{
+  position:sticky;top:0;z-index:40;
+  display:flex;align-items:center;gap:16px;
+  padding:14px 28px;
+  background:rgba(238,241,252,0.85);
+  backdrop-filter:blur(10px);
+  border-bottom:1px solid var(--border);
+}
+.wordmark{
+  font-family:var(--font-display);
+  font-weight:700;font-size:22px;letter-spacing:-0.01em;
+  display:flex;align-items:center;gap:8px;
+}
+.wordmark .dot{width:9px;height:9px;border-radius:50%;background:var(--warm);display:inline-block;}
+.topbar-spacer{flex:1;}
+.search-wrap{position:relative;width:280px;max-width:40vw;}
+.search-input{
+  width:100%;padding:9px 14px 9px 36px;border-radius:999px;border:1px solid var(--border);
+  background:var(--surface);font-size:14px;outline:none;transition:box-shadow .15s;
+}
+.search-input:focus{box-shadow:0 0 0 3px var(--primary-soft);border-color:var(--primary);}
+.search-icon{position:absolute;left:12px;top:50%;transform:translateY(-50%);font-size:14px;opacity:.5;}
+.search-results{
+  position:absolute;top:calc(100% + 6px);left:0;right:0;background:var(--surface);
+  border:1px solid var(--border);border-radius:var(--radius-sm);box-shadow:var(--shadow-md);
+  max-height:320px;overflow-y:auto;z-index:50;
+}
+.search-result-item{padding:10px 14px;font-size:13.5px;border-bottom:1px solid var(--border);}
+.search-result-item:last-child{border-bottom:none;}
+.search-result-item:hover{background:var(--surface-alt);cursor:pointer;}
+.search-result-type{font-size:10.5px;text-transform:uppercase;letter-spacing:.06em;color:var(--ink-faint);font-family:var(--font-mono);}
+
+.icon-btn{
+  width:38px;height:38px;border-radius:50%;border:1px solid var(--border);background:var(--surface);
+  display:flex;align-items:center;justify-content:center;font-size:17px;position:relative;
+  transition:transform .12s, box-shadow .12s;
+}
+.icon-btn:hover{transform:translateY(-1px);box-shadow:var(--shadow-sm);}
+.badge{
+  position:absolute;top:-4px;right:-4px;background:var(--red);color:#fff;
+  font-size:10px;font-weight:700;min-width:16px;height:16px;border-radius:8px;
+  display:flex;align-items:center;justify-content:center;padding:0 4px;font-family:var(--font-mono);
+}
+
+.avatar-chip{
+  width:38px;height:38px;border-radius:50%;background:var(--warm-soft);
+  display:flex;align-items:center;justify-content:center;font-size:18px;border:1px solid var(--border);
+}
+.user-menu-wrap{position:relative;}
+.user-menu{
+  position:absolute;top:calc(100% + 8px);right:0;background:var(--surface);border:1px solid var(--border);
+  border-radius:var(--radius-sm);box-shadow:var(--shadow-md);min-width:180px;overflow:hidden;z-index:50;
+}
+.user-menu button{
+  display:block;width:100%;text-align:left;padding:11px 14px;border:none;background:none;font-size:13.5px;
+}
+.user-menu button:hover{background:var(--surface-alt);}
+
+.notif-dropdown{
+  position:absolute;top:calc(100% + 8px);right:0;background:var(--surface);border:1px solid var(--border);
+  border-radius:var(--radius-md);box-shadow:var(--shadow-md);width:340px;max-height:400px;overflow-y:auto;z-index:50;
+}
+.notif-header{padding:14px 16px;font-weight:700;font-size:13px;border-bottom:1px solid var(--border);}
+.notif-item{padding:12px 16px;border-bottom:1px solid var(--border);display:flex;gap:10px;align-items:flex-start;font-size:13px;cursor:pointer;}
+.notif-item:hover{background:var(--surface-alt);}
+.notif-dot{width:8px;height:8px;border-radius:50%;margin-top:5px;flex-shrink:0;}
+.notif-empty{padding:28px 16px;text-align:center;color:var(--ink-faint);font-size:13px;}
+
+.container{max-width:1180px;margin:0 auto;padding:28px;}
+
+/* ============================================================
+   Auth screen
+   ============================================================ */
+#authScreen{
+  min-height:100vh;display:flex;align-items:center;justify-content:center;position:relative;overflow:hidden;
+}
+.auth-card{
+  position:relative;z-index:1;background:var(--surface);border-radius:var(--radius-lg);
+  padding:44px 40px;width:380px;box-shadow:var(--shadow-lg);border:1px solid var(--border);
+}
+.auth-wordmark{font-family:var(--font-display);font-size:25px;font-weight:600;margin:0 0 4px;color:var(--ink);}
+.auth-sub{color:var(--ink-soft);font-size:13.5px;margin:0 0 26px;}
+.field{margin-bottom:16px;}
+.field label{display:block;font-size:12.5px;font-weight:700;color:var(--ink-soft);margin-bottom:6px;text-transform:uppercase;letter-spacing:.04em;}
+.field input,.field select,.field textarea{
+  width:100%;padding:11px 13px;border-radius:var(--radius-sm);border:1.5px solid var(--border);
+  font-size:14.5px;outline:none;background:var(--surface-alt);transition:border-color .15s, background .15s;
+}
+.field input:focus,.field select:focus,.field textarea:focus{border-color:var(--primary);background:var(--surface);}
+.field textarea{resize:vertical;min-height:70px;}
+.password-wrap{position:relative;}
+.password-wrap input{padding-right:42px;}
+.password-eye{
+  position:absolute;right:4px;top:50%;transform:translateY(-50%);background:none;border:none;
+  width:32px;height:32px;border-radius:8px;font-size:15px;opacity:.55;display:flex;align-items:center;justify-content:center;
+}
+.password-eye:hover{opacity:1;background:var(--surface-alt);}
+.btn{
+  border:none;border-radius:999px;padding:11px 22px;font-weight:700;font-size:14px;
+  transition:transform .12s, box-shadow .12s, opacity .12s;
+}
+.btn:active{transform:scale(0.97);}
+.btn-primary{background:var(--primary);color:#fff;}
+.btn-primary:hover{background:var(--primary-dark);}
+.btn-warm{background:var(--warm);color:#3D2600;}
+.btn-warm:hover{background:var(--warm-dark);}
+.btn-ghost{background:none;color:var(--ink-soft);border:1.5px solid var(--border);}
+.btn-ghost:hover{background:var(--surface-alt);}
+.btn-danger{background:var(--red-soft);color:var(--red);}
+.btn-danger:hover{opacity:.8;}
+.btn-block{width:100%;}
+.btn-sm{padding:6px 14px;font-size:12.5px;}
+.link-btn{background:none;border:none;color:var(--primary);font-weight:700;font-size:13px;padding:0;}
+.error-msg{
+  background:var(--red-soft);color:var(--red);padding:10px 13px;border-radius:var(--radius-sm);
+  font-size:13px;margin-bottom:16px;font-weight:600;
+}
+.success-msg{
+  background:var(--green-soft);color:var(--green);padding:10px 13px;border-radius:var(--radius-sm);
+  font-size:13px;margin-bottom:16px;font-weight:600;
+}
+
+/* ============================================================
+   Home screen
+   ============================================================ */
+.greeting-banner{
+  background:var(--surface);
+  border:1px solid var(--border);
+  border-left:3px solid var(--warm);
+  border-radius:var(--radius-lg);padding:26px 30px;margin-bottom:22px;position:relative;overflow:hidden;
+}
+.greeting-banner h1{font-family:var(--font-display);font-size:25px;font-weight:600;margin:0 0 4px;color:var(--ink);}
+.greeting-banner p{margin:0;color:var(--ink-soft);font-size:13.5px;font-weight:500;}
+
+.stat-row{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-top:20px;}
+.stat-card{
+  background:var(--surface-alt);border:1px solid var(--border);border-radius:var(--radius-md);padding:14px 16px;
+}
+.stat-num{font-family:var(--font-mono);font-size:22px;font-weight:600;color:var(--ink);}
+.stat-label{font-size:10.5px;font-weight:700;color:var(--ink-soft);text-transform:uppercase;letter-spacing:.05em;margin-top:2px;}
+
+.section-title{
+  font-family:var(--font-display);font-size:17px;font-weight:600;margin:28px 0 14px;color:var(--ink);
+  display:flex;align-items:center;justify-content:space-between;
+}
+.section-title span.count{font-family:var(--font-mono);font-size:12px;color:var(--ink-faint);font-weight:500;}
+
+.chip-row{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:18px;}
+.chip{
+  padding:7px 15px;border-radius:999px;font-size:13px;font-weight:700;border:1.5px solid var(--border);
+  background:var(--surface);color:var(--ink-soft);transition:all .12s;
+}
+.chip.active{background:var(--primary);color:#fff;border-color:var(--primary);}
+.chip:hover:not(.active){border-color:var(--primary);color:var(--primary);}
+
+.team-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:14px;}
+.team-card{
+  background:var(--surface);border-radius:var(--radius-md);border:1px solid var(--border);
+  overflow:hidden;cursor:pointer;transition:box-shadow .15s, border-color .15s;position:relative;
+}
+.team-card:hover{box-shadow:var(--shadow-md);border-color:var(--ink-faint);}
+.team-card-roof{height:3px;opacity:0.6;}
+.team-card-body{padding:16px 18px;}
+.team-card-avatar{
+  width:44px;height:44px;border-radius:50%;display:flex;align-items:center;justify-content:center;
+  font-size:21px;margin-bottom:10px;background:var(--surface-alt);border:1px solid var(--border);
+}
+.team-card-name{font-weight:700;font-size:14.5px;margin-bottom:10px;color:var(--ink);}
+.team-card-stats{display:flex;gap:12px;}
+.tcs-item{text-align:left;}
+.tcs-num{font-family:var(--font-mono);font-weight:600;font-size:15px;}
+.tcs-label{font-size:9.5px;color:var(--ink-faint);text-transform:uppercase;letter-spacing:.03em;font-weight:700;}
+
+/* Daily summary table */
+.summary-table-wrap{background:var(--surface);border-radius:var(--radius-md);border:1px solid var(--border);overflow:hidden;}
+table{width:100%;border-collapse:collapse;font-size:13px;}
+th{
+  text-align:left;padding:12px 14px;background:var(--surface-alt);font-size:11px;text-transform:uppercase;
+  letter-spacing:.04em;color:var(--ink-soft);font-weight:800;border-bottom:1px solid var(--border);
+}
+td{padding:11px 14px;border-bottom:1px solid var(--border);font-family:var(--font-mono);}
+td.name-cell{font-family:var(--font-body);font-weight:700;}
+tr:last-child td{border-bottom:none;}
+tr.total-row td{font-weight:800;background:var(--surface-alt);}
+
+/* ============================================================
+   Modal / overlay
+   ============================================================ */
+.overlay{
+  position:fixed;inset:0;background:rgba(36,28,59,0.45);z-index:100;
+  display:flex;align-items:center;justify-content:center;padding:20px;backdrop-filter:blur(2px);
+}
+.modal{
+  background:var(--surface);border-radius:var(--radius-lg);width:480px;max-width:100%;
+  max-height:88vh;overflow-y:auto;box-shadow:var(--shadow-lg);
+}
+.modal-header{
+  padding:22px 26px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;
+}
+.modal-header h2{font-family:var(--font-display);font-size:19px;margin:0;font-weight:600;}
+.modal-close{background:none;border:none;font-size:20px;color:var(--ink-faint);width:30px;height:30px;border-radius:50%;}
+.modal-close:hover{background:var(--surface-alt);}
+.modal-body{padding:22px 26px;}
+.modal-footer{padding:18px 26px 24px;display:flex;gap:10px;justify-content:flex-end;}
+
+.type-picker{display:flex;flex-direction:column;gap:10px;}
+.type-picker button{
+  display:flex;align-items:center;gap:12px;padding:16px;border-radius:var(--radius-md);
+  border:1.5px solid var(--border);background:var(--surface-alt);text-align:left;font-weight:700;font-size:14.5px;
+  transition:border-color .12s, background .12s;
+}
+.type-picker button:hover{border-color:var(--primary);background:var(--primary-soft);}
+.type-picker .tp-icon{font-size:22px;}
+.type-picker .tp-sub{font-size:12px;font-weight:500;color:var(--ink-soft);display:block;margin-top:2px;}
+
+/* ============================================================
+   Workspace view
+   ============================================================ */
+.workspace-header{
+  display:flex;align-items:center;gap:16px;background:var(--surface);border-radius:var(--radius-lg);
+  padding:20px 24px;margin-bottom:22px;border:1px solid var(--border);flex-wrap:wrap;
+}
+.ws-avatar{width:52px;height:52px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:24px;background:var(--surface-alt);border:1px solid var(--border);}
+.ws-name{font-family:var(--font-display);font-size:20px;font-weight:600;margin:0;color:var(--ink);}
+.ws-meta{color:var(--ink-soft);font-size:13px;margin-top:2px;}
+.ws-spacer{flex:1;}
+.back-link{display:flex;align-items:center;gap:6px;font-size:13.5px;font-weight:700;color:var(--ink-soft);background:none;border:none;margin-bottom:14px;}
+.back-link:hover{color:var(--primary);}
+
+.tab-row{display:flex;gap:6px;margin-bottom:18px;background:var(--surface);border:1px solid var(--border);border-radius:999px;padding:4px;width:fit-content;}
+.tab-btn{padding:8px 18px;border-radius:999px;border:none;background:none;font-weight:700;font-size:13.5px;color:var(--ink-soft);}
+.tab-btn.active{background:var(--primary);color:#fff;}
+
+.card-list{display:flex;flex-direction:column;gap:12px;}
+.item-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-md);padding:18px 20px;}
+.item-card-top{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:8px;}
+.item-title{font-weight:800;font-size:15px;}
+.item-desc{color:var(--ink-soft);font-size:13.5px;line-height:1.5;margin:4px 0 12px;}
+
+.pill{
+  display:inline-flex;align-items:center;gap:5px;padding:3px 10px;border-radius:5px;
+  font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.03em;
+}
+.pill-green{background:var(--green-soft);color:var(--green);}
+.pill-amber{background:var(--amber-soft);color:var(--amber);}
+.pill-red{background:var(--red-soft);color:var(--red);}
+.pill-neutral{background:var(--surface-alt);color:var(--ink-soft);border:1px solid var(--border);}
+.pill-priority-P0{background:var(--red-soft);color:var(--red);}
+.pill-priority-P1{background:var(--amber-soft);color:var(--amber);}
+.pill-priority-P2{background:var(--primary-soft);color:var(--primary);}
+
+.meta-row{display:flex;flex-wrap:wrap;gap:16px;margin:12px 0;font-size:12.5px;color:var(--ink-soft);}
+.meta-item b{color:var(--ink);font-weight:700;}
+
+/* Zone bar — signature element */
+.zonebar-wrap{margin:14px 0 6px;}
+.zonebar{position:relative;height:8px;border-radius:999px;overflow:hidden;display:flex;background:var(--surface-alt);}
+.zonebar div{height:100%;}
+.zonebar .z-green{background:var(--green);}
+.zonebar .z-amber{background:var(--amber);}
+.zonebar .z-red{background:var(--red);}
+.zonebar-marker{
+  position:absolute;top:-2px;width:2px;height:12px;border-radius:1px;background:var(--ink);
+  transform:translateX(-50%);
+}
+.zonebar-label{font-size:11px;color:var(--ink-soft);margin-top:6px;font-family:var(--font-mono);font-weight:600;}
+
+.stakeholder-chain{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin-top:10px;}
+.stakeholder-node{background:var(--primary-soft);color:var(--primary-dark);padding:4px 11px;border-radius:999px;font-size:12px;font-weight:700;}
+.stakeholder-arrow{color:var(--ink-faint);font-size:13px;}
+
+.inline-edit-row{display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin-top:10px;}
+.inline-select,.inline-date{
+  padding:6px 10px;border-radius:8px;border:1.5px solid var(--border);font-size:12.5px;font-weight:700;
+  background:var(--surface-alt);
+}
+
+.empty-state{
+  text-align:center;padding:50px 20px;color:var(--ink-faint);background:var(--surface);
+  border-radius:var(--radius-md);border:1px dashed var(--border);font-size:14px;
+}
+
+.collapsible{border:1px solid var(--border);border-radius:var(--radius-sm);margin-top:8px;overflow:hidden;}
+.collapsible-head{padding:10px 14px;background:var(--surface-alt);font-weight:700;font-size:13px;display:flex;justify-content:space-between;align-items:center;}
+.collapsible-body{padding:12px 14px;font-size:13px;}
+
+.save-toast{
+  position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:var(--ink);color:#fff;
+  padding:10px 20px;border-radius:999px;font-size:13px;font-weight:700;z-index:200;
+  box-shadow:var(--shadow-lg);opacity:0;transition:opacity .2s, transform .2s;pointer-events:none;
+}
+.save-toast.show{opacity:1;transform:translateX(-50%) translateY(-4px);}
+
+.add-btn-wrap{position:relative;}
+
+/* Team management (admin) */
+.mgmt-table-wrap{background:var(--surface);border-radius:var(--radius-md);border:1px solid var(--border);overflow:hidden;}
+
+/* Weekly summary chart */
+.week-summary-row{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:22px;}
+.week-stat{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-md);padding:16px;}
+.week-stat-num{font-family:var(--font-mono);font-size:22px;font-weight:600;color:var(--ink);}
+.week-stat-label{font-size:10.5px;font-weight:700;color:var(--ink-soft);text-transform:uppercase;letter-spacing:.04em;margin-top:2px;}
+.chart-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-md);padding:20px 22px;}
+.chart-card h3{font-family:var(--font-display);font-size:15px;font-weight:600;margin:0 0 16px;color:var(--ink);}
+.bar-chart{display:flex;align-items:flex-end;gap:10px;height:120px;}
+.bar-col{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;height:100%;gap:6px;}
+.bar-track{width:100%;height:100%;display:flex;align-items:flex-end;justify-content:center;}
+.bar-fill{width:60%;background:var(--primary);border-radius:3px 3px 0 0;min-height:2px;transition:height .3s;}
+.bar-day-label{font-size:10.5px;color:var(--ink-soft);font-weight:700;}
+.bar-value{font-family:var(--font-mono);font-size:10.5px;color:var(--ink-faint);}
+
+/* Daily check-in */
+.checkin-row{display:flex;align-items:center;gap:8px;margin-top:12px;padding-top:12px;border-top:1px solid var(--border);}
+.checkin-row input[type=checkbox]{width:16px;height:16px;accent-color:var(--primary);cursor:pointer;}
+.checkin-label{font-size:12.5px;font-weight:600;color:var(--ink-soft);cursor:pointer;}
+.checkin-row.logged .checkin-label{color:var(--green);}
+.checkin-note{font-size:12px;color:var(--ink-faint);margin-top:4px;font-style:italic;}
+.role-badge{font-size:10.5px;font-weight:800;padding:3px 9px;border-radius:999px;text-transform:uppercase;}
+.role-Admin{background:var(--warm-soft);color:var(--warm-dark);}
+.role-User{background:var(--surface-alt);color:var(--ink-soft);}
+.status-Active{color:var(--green);font-weight:700;}
+.status-Inactive{color:var(--ink-faint);font-weight:700;}
+
+@media (max-width:640px){
+  .stat-row{grid-template-columns:repeat(2,1fr);}
+  .week-summary-row{grid-template-columns:repeat(2,1fr);}
+  .container{padding:16px;}
+  .search-wrap{display:none;}
+  .tab-row{flex-wrap:wrap;width:100%;border-radius:var(--radius-md);}
+  .workspace-header{padding:16px 18px;}
+  .add-btn-wrap{width:100%;}
+  .add-btn-wrap .btn-primary{width:100%;}
+}
+</style>
+</head>
+<body>
+
+<div id="app">
+
+  <!-- ============================================================
+       AUTH SCREEN
+       ============================================================ -->
+  <div id="authScreen">
+    <div class="blob" style="width:420px;height:420px;background:var(--warm);top:-140px;left:-120px;"></div>
+    <div class="blob" style="width:360px;height:360px;background:var(--primary);bottom:-140px;right:-100px;"></div>
+
+    <div class="auth-card">
+      <p class="auth-wordmark">🏙️ Townhall</p>
+      <p class="auth-sub" id="authSubtitle">One place for everyone's best work.</p>
+
+      <div id="authError" class="error-msg hidden"></div>
+      <div id="authSuccess" class="success-msg hidden"></div>
+
+      <div id="loginForm">
+        <div class="field">
+          <label>Work Email</label>
+          <input type="email" id="loginEmail" placeholder="you@company.com">
+        </div>
+        <div class="field">
+          <label>Password</label>
+          <div class="password-wrap">
+            <input type="password" id="loginPassword" placeholder="6-digit password">
+            <button type="button" class="password-eye" onclick="togglePasswordVisibility('loginPassword', this)" aria-label="Show password">👁</button>
+          </div>
+        </div>
+        <button class="btn btn-warm btn-block" onclick="doLogin()">Log in</button>
+        <div style="text-align:center;margin-top:16px;">
+          <button class="link-btn" onclick="showForgot()">Forgot password?</button>
+        </div>
+      </div>
+
+      <div id="forgotForm" class="hidden">
+        <div class="field">
+          <label>Work Email</label>
+          <input type="email" id="forgotEmail" placeholder="you@company.com">
+        </div>
+        <button class="btn btn-warm btn-block" onclick="doForgotPassword()">Send new password</button>
+        <div style="text-align:center;margin-top:16px;">
+          <button class="link-btn" onclick="showLogin()">Back to login</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============================================================
+       MAIN APP
+       ============================================================ -->
+  <div id="mainApp" class="hidden">
+    <div class="topbar">
+      <div class="wordmark"><span class="dot"></span>Townhall</div>
+      <div class="topbar-spacer"></div>
+
+      <div class="search-wrap">
+        <span class="search-icon">🔍</span>
+        <input class="search-input" id="searchInput" placeholder="Search projects, people, ideas..." oninput="onSearchInput()">
+        <div id="searchResults" class="search-results hidden"></div>
+      </div>
+
+      <div style="position:relative;">
+        <button class="icon-btn" onclick="toggleNotifDropdown()">🔔<span id="notifBadge" class="badge hidden">0</span></button>
+        <div id="notifDropdown" class="notif-dropdown hidden"></div>
+      </div>
+
+      <div class="user-menu-wrap">
+        <button class="icon-btn" style="border-radius:50%;padding:0;overflow:hidden;" onclick="toggleUserMenu()">
+          <span id="topbarAvatar">🙂</span>
+        </button>
+        <div id="userMenu" class="user-menu hidden">
+          <button onclick="goHome()">🏠 Home</button>
+          <button id="teamMgmtMenuBtn" class="hidden" onclick="openTeamManagement()">👑 Team Management</button>
+          <button onclick="showResetOwnPassword()">🔑 Reset my password</button>
+          <button onclick="doLogout()">🚪 Log out</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="container" id="mainContainer">
+      <!-- views render here -->
+    </div>
+  </div>
+</div>
+
+<div id="toast" class="save-toast"></div>
+
+<script>
+/* ============================================================
+   CONFIG
+   ============================================================ */
+const API_URL = "https://script.google.com/macros/s/AKfycbxl7YDp_XENfzaSIVFnKCKElx_czcqS9EAQJ4UBzN-D3Mmh0-H0gpHrpvmvRSteCQ/exec";
+
+const PROJECT_STATUSES = ['Open', 'In Progress', 'On Hold', 'Completed'];
+const IDEA_TYPES = ['Visibility', 'Cost', 'Process Improvement', 'CX'];
+const PRIORITIES = ['P0', 'P1', 'P2'];
+
+const AVATAR_COLORS = {
+  '🦊':'#FF8A4C','🐼':'#5B6B79','🐸':'#2FAE6B','🐯':'#FFA53E','🐨':'#8E9AAF',
+  '🐙':'#8E5CD9','🦄':'#F06BB0','🐻':'#8B5E3C','🐱':'#FF7A6B','🐰':'#FF9AC8',
+  '🦋':'#5A8DEE','🐥':'#FFD23F'
+};
+
+/* ============================================================
+   STATE
+   ============================================================ */
+let state = {
+  token: localStorage.getItem('townhall_token') || null,
+  user: JSON.parse(localStorage.getItem('townhall_user') || 'null'),
+  homeFilter: 'All',
+  currentWorkspaceUserId: null,
+  currentWorkspaceTab: 'projects',
+  workspaceData: null,
+  searchDebounce: null
+};
+
+/* ============================================================
+   API HELPER — text/plain avoids CORS preflight on Apps Script
+   ============================================================ */
+async function apiCall(action, payload) {
+  payload = payload || {};
+  payload.action = action;
+  if (state.token) payload.token = state.token;
+  try {
+    const res = await fetch(API_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+      body: JSON.stringify(payload)
+    });
+    return await res.json();
+  } catch (err) {
+    return { ok: false, error: 'Network error — check your connection or the API URL.' };
+  }
+}
+
+function showToast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  setTimeout(() => t.classList.remove('show'), 1800);
+}
+
+/* ============================================================
+   AUTH
+   ============================================================ */
+function showLogin() {
+  document.getElementById('loginForm').classList.remove('hidden');
+  document.getElementById('forgotForm').classList.add('hidden');
+  document.getElementById('authSubtitle').textContent = "One place for everyone's best work.";
+  hideAuthMsgs();
+}
+function showForgot() {
+  document.getElementById('loginForm').classList.add('hidden');
+  document.getElementById('forgotForm').classList.remove('hidden');
+  document.getElementById('authSubtitle').textContent = "We'll email you a new password.";
+  hideAuthMsgs();
+}
+function hideAuthMsgs() {
+  document.getElementById('authError').classList.add('hidden');
+  document.getElementById('authSuccess').classList.add('hidden');
+}
+function authError(msg) {
+  const el = document.getElementById('authError');
+  el.textContent = msg; el.classList.remove('hidden');
+  document.getElementById('authSuccess').classList.add('hidden');
+}
+function authSuccess(msg) {
+  const el = document.getElementById('authSuccess');
+  el.textContent = msg; el.classList.remove('hidden');
+  document.getElementById('authError').classList.add('hidden');
+}
+
+async function doLogin() {
+  const email = document.getElementById('loginEmail').value.trim();
+  const password = document.getElementById('loginPassword').value.trim();
+  if (!email || !password) return authError('Enter your email and password.');
+  const res = await apiCall('login', { email, password });
+  if (!res.ok) return authError(res.error);
+  state.token = res.data.token;
+  state.user = res.data.user;
+  localStorage.setItem('townhall_token', state.token);
+  localStorage.setItem('townhall_user', JSON.stringify(state.user));
+  enterApp();
+}
+
+async function doForgotPassword() {
+  const email = document.getElementById('forgotEmail').value.trim();
+  if (!email) return authError('Enter your email.');
+  const res = await apiCall('forgotPassword', { email });
+  if (!res.ok) return authError(res.error);
+  authSuccess(res.data.message);
+}
+
+async function doLogout() {
+  await apiCall('logout', {});
+  localStorage.removeItem('townhall_token');
+  localStorage.removeItem('townhall_user');
+  state = { ...state, token: null, user: null };
+  document.getElementById('mainApp').classList.add('hidden');
+  document.getElementById('authScreen').classList.remove('hidden');
+  showLogin();
+}
+
+function showResetOwnPassword() {
+  toggleUserMenu();
+  if (!confirm('Send a new password to ' + state.user.email + '?')) return;
+  apiCall('forgotPassword', { email: state.user.email }).then(res => {
+    showToast(res.ok ? 'New password sent to your email.' : (res.error || 'Something went wrong.'));
+  });
+}
+
+async function enterApp() {
+  document.getElementById('authScreen').classList.add('hidden');
+  document.getElementById('mainApp').classList.remove('hidden');
+  document.getElementById('topbarAvatar').textContent = state.user.avatar;
+  if (state.user.role === 'Admin') {
+    document.getElementById('teamMgmtMenuBtn').classList.remove('hidden');
+  }
+  await checkAdminDefaulterPopup();
+  goHome();
+}
+
+// Try auto-login from stored session
+if (state.token && state.user) {
+  enterApp();
+}
+
+/* ============================================================
+   TOP BAR: notifications, user menu, search
+   ============================================================ */
+function toggleUserMenu() {
+  document.getElementById('userMenu').classList.toggle('hidden');
+  document.getElementById('notifDropdown').classList.add('hidden');
+}
+
+let notifCache = [];
+async function toggleNotifDropdown() {
+  const el = document.getElementById('notifDropdown');
+  document.getElementById('userMenu').classList.add('hidden');
+  if (!el.classList.contains('hidden')) { el.classList.add('hidden'); return; }
+  el.classList.remove('hidden');
+  await refreshNotifications();
+  renderNotifDropdown();
+}
+
+async function refreshNotifications() {
+  const res = await apiCall('getNotifications', {});
+  if (res.ok) {
+    notifCache = res.data.alerts;
+    const badge = document.getElementById('notifBadge');
+    if (res.data.count > 0) { badge.textContent = res.data.count; badge.classList.remove('hidden'); }
+    else badge.classList.add('hidden');
+  }
+}
+
+function renderNotifDropdown() {
+  const el = document.getElementById('notifDropdown');
+  const colorFor = { overdue: 'var(--red)', dueToday: 'var(--amber)', dueTomorrow: '#FFD23F' };
+  let html = '<div class="notif-header">Deadline Alerts</div>';
+  if (notifCache.length === 0) {
+    html += '<div class="notif-empty">✨ Nothing overdue. Clear skies.</div>';
+  } else {
+    notifCache.forEach(n => {
+      html += `<div class="notif-item" onclick="openWorkspace('${n.userId||''}');document.getElementById('notifDropdown').classList.add('hidden')">
+        <span class="notif-dot" style="background:${colorFor[n.level]}"></span>
+        <span>${escapeHtml(n.avatar||'')} ${escapeHtml(n.message)}</span>
+      </div>`;
+    });
+  }
+  el.innerHTML = html;
+}
+
+async function checkAdminDefaulterPopup() {
+  if (state.user.role !== 'Admin') return;
+  const res = await apiCall('getNotifications', {});
+  if (!res.ok) return;
+  const overdue = res.data.alerts.filter(a => a.level === 'overdue');
+  if (overdue.length === 0) return;
+  let list = overdue.map(o => `<li style="margin-bottom:6px;"><b>${escapeHtml(o.ownerName)}</b> — ${escapeHtml(o.projectName)}</li>`).join('');
+  openModal(`
+    <div class="modal-header"><h2>⚠️ Deadline Report</h2><button class="modal-close" onclick="closeModal()">✕</button></div>
+    <div class="modal-body">
+      <p style="color:var(--ink-soft);font-size:13.5px;line-height:1.6;">
+        The following team member${overdue.length>1?'s have':' has'} exceeded their committed ETA and ${overdue.length>1?'are':'is'} currently flagged as in default of the agreed timeline:
+      </p>
+      <ul style="font-size:13.5px;padding-left:20px;">${list}</ul>
+    </div>
+    <div class="modal-footer"><button class="btn btn-primary" onclick="closeModal()">Acknowledge</button></div>
+  `);
+}
+
+let searchAbort = null;
+function onSearchInput() {
+  clearTimeout(state.searchDebounce);
+  const q = document.getElementById('searchInput').value.trim();
+  if (!q) { document.getElementById('searchResults').classList.add('hidden'); return; }
+  state.searchDebounce = setTimeout(async () => {
+    const res = await apiCall('search', { query: q });
+    if (!res.ok) return;
+    renderSearchResults(res.data.results);
+  }, 280);
+}
+function renderSearchResults(results) {
+  const el = document.getElementById('searchResults');
+  if (results.length === 0) {
+    el.innerHTML = '<div class="search-result-item" style="color:var(--ink-faint)">No matches.</div>';
+  } else {
+    el.innerHTML = results.map(r => `
+      <div class="search-result-item" onclick="onSearchResultClick('${r.userId||''}')">
+        <div class="search-result-type">${r.type}</div>
+        <div>${escapeHtml(r.label)}</div>
+      </div>`).join('');
+  }
+  el.classList.remove('hidden');
+}
+function onSearchResultClick(userId) {
+  document.getElementById('searchResults').classList.add('hidden');
+  document.getElementById('searchInput').value = '';
+  if (userId) openWorkspace(userId);
+}
+document.addEventListener('click', (e) => {
+  if (!e.target.closest('.search-wrap')) document.getElementById('searchResults').classList.add('hidden');
+  if (!e.target.closest('.user-menu-wrap')) document.getElementById('userMenu').classList.add('hidden');
+  if (!e.target.closest('.icon-btn') && !e.target.closest('.notif-dropdown')) document.getElementById('notifDropdown').classList.add('hidden');
+});
+
+/* ============================================================
+   MODAL HELPERS
+   ============================================================ */
+function openModal(innerHtml) {
+  closeModal();
+  const overlay = document.createElement('div');
+  overlay.className = 'overlay';
+  overlay.id = 'activeOverlay';
+  overlay.onclick = (e) => { if (e.target === overlay) closeModal(); };
+  const modal = document.createElement('div');
+  modal.className = 'modal';
+  modal.innerHTML = innerHtml;
+  overlay.appendChild(modal);
+  document.body.appendChild(overlay);
+}
+function closeModal() {
+  const el = document.getElementById('activeOverlay');
+  if (el) el.remove();
+}
+
+/* ============================================================
+   HOME VIEW
+   ============================================================ */
+let homeDataCache = null;
+async function goHome() {
+  state.currentWorkspaceUserId = null;
+  toggleUserMenu(); // closes if open
+  renderLoading();
+  const [homeRes, summaryRes] = await Promise.all([
+    apiCall('getHomeData', {}),
+    apiCall('getDailySummary', {})
+  ]);
+  await refreshNotifications();
+  if (!homeRes.ok) { renderError(homeRes.error); return; }
+  homeDataCache = homeRes.data;
+  renderHome(homeRes.data, summaryRes.ok ? summaryRes.data : null);
+}
+
+function renderLoading() {
+  document.getElementById('mainContainer').innerHTML = `<div style="padding:80px;text-align:center;color:var(--ink-faint);">Loading Townhall…</div>`;
+}
+function renderError(msg) {
+  document.getElementById('mainContainer').innerHTML = `<div class="empty-state">⚠️ ${escapeHtml(msg)}</div>`;
+}
+
+function greetingMessages() {
+  const hour = new Date().getHours();
+  const timeGreet = hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening';
+  const flair = hour < 12 ? '🌻' : hour < 17 ? '☀️' : '🌙';
+  const lines = ["Here's what's on your plate today.", "Let's make today count.", "Everything's on the board — go get it.", "Good things are in motion.", "One good day builds the next."];
+  return { timeGreet, flair, line: lines[new Date().getDate() % lines.length] };
+}
+
+function renderHome(data, summary) {
+  const g = greetingMessages();
+  const ps = data.personalSummary;
+
+  let filteredTeam = data.teamCards;
+  if (state.homeFilter !== 'All') {
+    filteredTeam = data.teamCards.filter(t => {
+      if (state.homeFilter === 'Ongoing') return t.ongoing > 0;
+      if (state.homeFilter === 'Completed') return t.completed > 0;
+      if (state.homeFilter === 'Delayed') return t.ongoing > 0; // ongoing bucket includes delayed
+      if (state.homeFilter === 'My Work') return t.userId === state.user.userId;
+      return true;
+    });
+  }
+
+  const teamCardsHtml = filteredTeam.map(t => {
+    const color = AVATAR_COLORS[t.avatar] || 'var(--primary)';
+    return `
+    <div class="team-card" onclick="openWorkspace('${t.userId}')">
+      <div class="team-card-roof" style="background:${color}"></div>
+      <div class="team-card-body">
+        <div class="team-card-avatar">${t.avatar}</div>
+        <div class="team-card-name">${escapeHtml(t.name)}</div>
+        <div class="team-card-stats">
+          <div class="tcs-item"><div class="tcs-num" style="color:var(--green)">${t.active}</div><div class="tcs-label">Active</div></div>
+          <div class="tcs-item"><div class="tcs-num" style="color:var(--amber)">${t.ongoing}</div><div class="tcs-label">Ongoing</div></div>
+          <div class="tcs-item"><div class="tcs-num" style="color:var(--primary)">${t.completed}</div><div class="tcs-label">Done</div></div>
+        </div>
+      </div>
+    </div>`;
+  }).join('');
+
+  let summaryHtml = '';
+  if (summary) {
+    const rows = summary.rows.map(r => `
+      <tr>
+        <td class="name-cell">${r.avatar} ${escapeHtml(r.name)}</td>
+        <td>${r.newCount}</td><td>${r.inProgress}</td><td>${r.completed}</td>
+        <td>${r.ideas}</td><td>${r.adhoc}</td>
+        <td style="color:${r.delayed>0?'var(--red)':'inherit'}">${r.delayed}</td>
+      </tr>`).join('');
+    summaryHtml = `
+      <div class="section-title">📊 Today at Townhall</div>
+      <div class="summary-table-wrap">
+        <table>
+          <thead><tr><th>Team Member</th><th>New</th><th>In Progress</th><th>Completed</th><th>Ideas</th><th>Ad-hoc</th><th>Delayed</th></tr></thead>
+          <tbody>${rows}
+            <tr class="total-row"><td>Total</td><td>${summary.totals.newCount}</td><td>${summary.totals.inProgress}</td>
+              <td>${summary.totals.completed}</td><td>${summary.totals.ideas}</td><td>${summary.totals.adhoc}</td><td>${summary.totals.delayed}</td></tr>
+          </tbody>
+        </table>
+      </div>`;
+  }
+
+  document.getElementById('mainContainer').innerHTML = `
+    <div class="greeting-banner">
+      <h1>${g.timeGreet}, ${escapeHtml(data.greetingName)} ${g.flair}</h1>
+      <p>${g.line}</p>
+      <div class="stat-row">
+        <div class="stat-card"><div class="stat-num">${ps.active}</div><div class="stat-label">Active Projects</div></div>
+        <div class="stat-card"><div class="stat-num">${ps.completed}</div><div class="stat-label">Completed</div></div>
+        <div class="stat-card"><div class="stat-num">${ps.ideas}</div><div class="stat-label">Ideas</div></div>
+        <div class="stat-card"><div class="stat-num">${ps.adhocTimeToday}</div><div class="stat-label">Ad-hoc Today</div></div>
+      </div>
+    </div>
+
+    <div class="section-title">👥 Your Team <span class="count">${filteredTeam.length} of ${data.teamCards.length}</span></div>
+    <div class="chip-row">
+      ${['All','My Work','Ongoing','Completed','Delayed'].map(f =>
+        `<button class="chip ${state.homeFilter===f?'active':''}" onclick="setHomeFilter('${f}')">${f}</button>`).join('')}
+    </div>
+    <div class="team-grid">${teamCardsHtml || '<div class="empty-state">No one matches this filter right now — try another view.</div>'}</div>
+
+    ${summaryHtml}
+  `;
+}
+
+function setHomeFilter(f) {
+  state.homeFilter = f;
+  if (homeDataCache) renderHome(homeDataCache, null);
+  goHome(); // re-fetch to also refresh summary table cleanly
+}
+
+/* ============================================================
+   WORKSPACE VIEW
+   ============================================================ */
+async function openWorkspace(userId) {
+  if (!userId) return;
+  document.getElementById('notifDropdown').classList.add('hidden');
+  state.currentWorkspaceUserId = userId;
+  state.currentWorkspaceTab = 'projects';
+  renderLoading();
+  const res = await apiCall('getUserWorkspace', { userId });
+  if (!res.ok) { renderError(res.error); return; }
+  state.workspaceData = res.data;
+  renderWorkspace();
+}
+
+function renderWorkspace() {
+  const d = state.workspaceData;
+  const color = AVATAR_COLORS[d.user.avatar] || 'var(--primary)';
+  const isMine = d.user.userId === state.user.userId;
+
+  const tabs = [
+    { id: 'projects', label: `Projects (${d.projects.length})` },
+    { id: 'ideas', label: `Ideas (${d.ideas.length})` },
+  ];
+  if (d.isSelfOrAdmin) {
+    tabs.push({ id: 'week', label: '📊 This Week' });
+    tabs.push({ id: 'adhoc', label: `Ad-hoc (${d.adhoc.length})` });
+    tabs.push({ id: 'history', label: 'History' });
+  }
+
+  document.getElementById('mainContainer').innerHTML = `
+    <button class="back-link" onclick="goHome()">← Back to Townhall</button>
+    <div class="workspace-header">
+      <div class="ws-avatar">${d.user.avatar}</div>
+      <div>
+        <p class="ws-name">${escapeHtml(d.user.name)}'s Workspace</p>
+        <p class="ws-meta">${escapeHtml(d.user.email)} ${isMine ? '· This is you' : ''}</p>
+      </div>
+      <div class="ws-spacer"></div>
+      ${(isMine) ? `
+        <div class="add-btn-wrap">
+          <button class="btn btn-primary" onclick="toggleAddPicker()">+ Add</button>
+          <div id="addPickerDropdown" class="hidden" style="position:absolute;top:calc(100% + 8px);right:0;z-index:50;width:260px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-md);box-shadow:var(--shadow-md);padding:10px;">
+            <div class="type-picker">
+              <button onclick="openProjectModal()"><span class="tp-icon">📁</span><span>Project<span class="tp-sub">A formal piece of work with an ETA</span></span></button>
+              <button onclick="openIdeaModal()"><span class="tp-icon">💡</span><span>Idea<span class="tp-sub">Something worth exploring later</span></span></button>
+              <button onclick="openAdhocModal()"><span class="tp-icon">⚡</span><span>Ad-hoc<span class="tp-sub">Unplanned work you did today</span></span></button>
+            </div>
+          </div>
+        </div>` : ''}
+    </div>
+
+    <div class="tab-row">
+      ${tabs.map(t => `<button class="tab-btn ${state.currentWorkspaceTab===t.id?'active':''}" onclick="setWorkspaceTab('${t.id}')">${t.label}</button>`).join('')}
+    </div>
+
+    <div id="workspaceTabContent"></div>
+  `;
+  renderWorkspaceTabContent();
+}
+
+function toggleAddPicker() {
+  document.getElementById('addPickerDropdown').classList.toggle('hidden');
+}
+document.addEventListener('click', (e) => {
+  const dd = document.getElementById('addPickerDropdown');
+  if (dd && !e.target.closest('.add-btn-wrap')) dd.classList.add('hidden');
+});
+
+function setWorkspaceTab(tab) {
+  state.currentWorkspaceTab = tab;
+  renderWorkspace();
+}
+
+function renderWorkspaceTabContent() {
+  const d = state.workspaceData;
+  const isMine = d.user.userId === state.user.userId;
+  const canEdit = isMine || state.user.role === 'Admin';
+  const el = document.getElementById('workspaceTabContent');
+
+  if (state.currentWorkspaceTab === 'projects') {
+    el.innerHTML = d.projects.length === 0
+      ? '<div class="empty-state">Nothing here yet — click + Add to start your first project.</div>'
+      : `<div class="card-list">${d.projects.map(p => renderProjectCard(p, canEdit)).join('')}</div>`;
+  } else if (state.currentWorkspaceTab === 'ideas') {
+    el.innerHTML = d.ideas.length === 0
+      ? '<div class="empty-state">No ideas logged yet — every good project starts with one.</div>'
+      : `<div class="card-list">${d.ideas.map(i => renderIdeaCard(i, canEdit)).join('')}</div>`;
+  } else if (state.currentWorkspaceTab === 'adhoc') {
+    el.innerHTML = d.adhoc.length === 0
+      ? '<div class="empty-state">Nothing logged yet — you\'re all caught up.</div>'
+      : `<div class="card-list">${d.adhoc.map(a => renderAdhocCard(a, canEdit)).join('')}</div>`;
+  } else if (state.currentWorkspaceTab === 'history') {
+    el.innerHTML = d.activityHistory.length === 0
+      ? '<div class="empty-state">No activity yet — this fills in as work happens.</div>'
+      : `<div class="card-list">${d.activityHistory.map(renderHistoryItem).join('')}</div>`;
+  } else if (state.currentWorkspaceTab === 'week') {
+    renderWeekTab(d.user.userId);
+  }
+}
+
+async function renderWeekTab(userId) {
+  const el = document.getElementById('workspaceTabContent');
+  el.innerHTML = `<div style="padding:40px;text-align:center;color:var(--ink-faint);">Loading weekly summary…</div>`;
+  const res = await apiCall('getWeeklySummary', { userId });
+  if (!res.ok) { el.innerHTML = `<div class="empty-state">⚠️ ${escapeHtml(res.error)}</div>`; return; }
+  const { days, totals } = res.data;
+  const maxCheckIns = Math.max(1, ...days.map(d => d.checkIns));
+  const maxHours = Math.max(1, ...days.map(d => d.adhocHours));
+
+  el.innerHTML = `
+    <div class="week-summary-row">
+      <div class="week-stat"><div class="week-stat-num">${totals.projectsTouched}</div><div class="week-stat-label">Projects Touched</div></div>
+      <div class="week-stat"><div class="week-stat-num">${totals.totalHours}h</div><div class="week-stat-label">Hours Logged</div></div>
+      <div class="week-stat"><div class="week-stat-num">${totals.ideasAdded}</div><div class="week-stat-label">Ideas Added</div></div>
+      <div class="week-stat"><div class="week-stat-num">${totals.completed}</div><div class="week-stat-label">Completed</div></div>
+    </div>
+    <div class="chart-card" style="margin-bottom:14px;">
+      <h3>Daily check-ins</h3>
+      <div class="bar-chart">
+        ${days.map(d => `
+          <div class="bar-col">
+            <div class="bar-value">${d.checkIns || ''}</div>
+            <div class="bar-track"><div class="bar-fill" style="height:${d.checkIns === 0 ? 2 : (d.checkIns / maxCheckIns * 100)}%;"></div></div>
+            <div class="bar-day-label">${d.label}</div>
+          </div>`).join('')}
+      </div>
+    </div>
+    <div class="chart-card">
+      <h3>Ad-hoc hours logged</h3>
+      <div class="bar-chart">
+        ${days.map(d => `
+          <div class="bar-col">
+            <div class="bar-value">${d.adhocHours || ''}</div>
+            <div class="bar-track"><div class="bar-fill" style="height:${d.adhocHours === 0 ? 2 : (d.adhocHours / maxHours * 100)}%;background:var(--warm);"></div></div>
+            <div class="bar-day-label">${d.label}</div>
+          </div>`).join('')}
+      </div>
+    </div>
+  `;
+}
+
+function zoneColor(zone) { return zone === 'green' ? 'var(--green)' : zone === 'amber' ? 'var(--amber)' : 'var(--red)'; }
+function pillClassForDisplayStatus(status) {
+  if (status === 'Completed') return 'pill-green';
+  if (status === 'Delayed') return 'pill-red';
+  if (status === 'On Hold') return 'pill-amber';
+  return 'pill-neutral';
+}
+
+function renderZoneBar(p) {
+  if (p.status === 'Completed') {
+    return `<div class="zonebar-wrap">
+      <div class="zonebar"><div class="z-green" style="width:100%"></div></div>
+      <div class="zonebar-label">${escapeHtml(p.completionVariance || 'Completed')}</div>
+    </div>`;
+  }
+  const markerPos = p.zone === 'green' ? 20 : p.zone === 'amber' ? 55 : 90;
+  const label = p.displayStatus === 'Delayed'
+    ? `${Math.abs(p.daysRemaining)} day(s) overdue`
+    : `${p.daysRemaining} day(s) remaining`;
+  return `<div class="zonebar-wrap">
+    <div class="zonebar" style="position:relative;">
+      <div class="z-green" style="width:33.3%"></div><div class="z-amber" style="width:33.3%"></div><div class="z-red" style="width:33.4%"></div>
+      <div class="zonebar-marker" style="left:${markerPos}%;background:${zoneColor(p.zone)}"></div>
+    </div>
+    <div class="zonebar-label" style="color:${zoneColor(p.zone)}">${label}</div>
+  </div>`;
+}
+
+function renderStakeholders(str) {
+  if (!str) return '';
+  const parts = String(str).split('→').map(s => s.trim()).filter(Boolean);
+  if (parts.length === 0) return '';
+  return `<div class="stakeholder-chain">${parts.map((s,i) =>
+    (i>0?'<span class="stakeholder-arrow">→</span>':'') + `<span class="stakeholder-node">${escapeHtml(s)}</span>`
+  ).join('')}</div>`;
+}
+
+function renderProjectCard(p, canEdit) {
+  const editControls = canEdit ? `
+    <div class="inline-edit-row">
+      <select class="inline-select" onchange="updateProjectField('${p.projectId}','status',this.value)">
+        ${PROJECT_STATUSES.map(s => `<option value="${s}" ${p.status===s?'selected':''}>${s==='Open'?'Open / To Be Picked':s}</option>`).join('')}
+      </select>
+      <input type="date" class="inline-date" value="${formatDateInput(p.eta)}" onchange="updateProjectField('${p.projectId}','eta',this.value)">
+      ${p.status==='Completed' ? `<input type="date" class="inline-date" value="${formatDateInput(p.actualCompletionDate)}" placeholder="Completion date" onchange="updateProjectField('${p.projectId}','actualCompletionDate',this.value)">` : ''}
+    </div>` : '';
+
+  return `<div class="item-card">
+    <div class="item-card-top">
+      <div>
+        <div class="item-title">${escapeHtml(p.projectName)}</div>
+      </div>
+      <div style="display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end;">
+        <span class="pill ${pillClassForDisplayStatus(p.displayStatus)}">${p.displayStatus}</span>
+        <span class="pill pill-priority-${p.priority}">${p.priority}</span>
+      </div>
+    </div>
+    <div class="item-desc">${escapeHtml(p.description || '')}</div>
+    ${renderZoneBar(p)}
+    <div class="meta-row">
+      <div class="meta-item">ETA: <b>${formatDateDisplay(p.eta)}</b></div>
+      ${p.impact ? `<div class="meta-item">Impact: <b>${escapeHtml(p.impact)}</b></div>` : ''}
+      ${p.dependency ? `<div class="meta-item">Dependency: <b>${escapeHtml(p.dependency)}</b></div>` : ''}
+    </div>
+    ${renderStakeholders(p.stakeholders)}
+    ${editControls}
+    ${canEdit ? renderCheckinRow(p) : ''}
+  </div>`;
+}
+
+function renderCheckinRow(p) {
+  const logged = !!p.loggedToday;
+  return `<div class="checkin-row ${logged ? 'logged' : ''}">
+    <input type="checkbox" id="checkin-${p.projectId}" ${logged ? 'checked' : ''} onchange="onCheckinToggle('${p.projectId}', this)">
+    <label class="checkin-label" for="checkin-${p.projectId}">${logged ? '✓ Logged work on this today' : 'I worked on this project today'}</label>
+  </div>
+  ${logged && p.todaysLogDescription ? `<div class="checkin-note">"${escapeHtml(p.todaysLogDescription)}"</div>` : ''}`;
+}
+
+function onCheckinToggle(projectId, checkbox) {
+  if (!checkbox.checked) { checkbox.checked = true; return; } // logging can't be un-done from here, only edited
+  openModal(`
+    <div class="modal-header"><h2>What did you work on?</h2><button class="modal-close" onclick="closeModal()">✕</button></div>
+    <div class="modal-body">
+      <div class="field"><label>Quick explanation</label><textarea id="checkinDesc" placeholder="e.g. Followed up with vendor, updated the cost sheet..." autofocus></textarea></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="closeModal()">Cancel</button>
+      <button class="btn btn-primary" onclick="submitCheckin('${projectId}')">Log it</button>
+    </div>
+  `);
+}
+
+async function submitCheckin(projectId) {
+  const description = val('checkinDesc');
+  if (!description) { showToast('⚠️ A short explanation is required'); return; }
+  const res = await apiCall('logDailyWork', { projectId, description });
+  if (!res.ok) { showToast('⚠️ ' + res.error); return; }
+  closeModal(); showToast('✓ Logged — thanks for keeping this updated');
+  await openWorkspace(state.currentWorkspaceUserId);
+}
+
+function renderIdeaCard(i, canEdit) {
+  return `<div class="item-card">
+    <div class="item-card-top">
+      <div class="item-title">${escapeHtml(i.description)}</div>
+      <span class="pill pill-neutral">${escapeHtml(i.type)}</span>
+    </div>
+    ${i.expectedImpact ? `<div class="item-desc"><b>Expected impact:</b> ${escapeHtml(i.expectedImpact)}</div>` : ''}
+  </div>`;
+}
+
+function renderAdhocCard(a, canEdit) {
+  return `<div class="item-card">
+    <div class="item-card-top">
+      <div class="item-title">${escapeHtml(a.task)}</div>
+      <span class="pill pill-neutral">${a.timeSpent}h</span>
+    </div>
+    <div class="item-desc">${escapeHtml(a.description || '')}</div>
+    <div class="meta-row">
+      ${a.source ? `<div class="meta-item">Source: <b>${escapeHtml(a.source)}</b></div>` : ''}
+      <div class="meta-item">Date: <b>${formatDateDisplay(a.date)}</b></div>
+    </div>
+  </div>`;
+}
+
+function renderHistoryItem(h) {
+  return `<div class="item-card" style="padding:14px 18px;">
+    <div style="font-family:var(--font-mono);font-size:11.5px;color:var(--ink-faint);margin-bottom:4px;">${formatDateTimeDisplay(h['Timestamp'])}</div>
+    <div style="font-size:13.5px;"><b>${escapeHtml(h['Module'])}</b> — ${escapeHtml(h['Action'])}${h['Field Changed'] ? ' · ' + escapeHtml(h['Field Changed']) : ''}</div>
+    ${h['Field Changed'] ? `<div style="font-size:12.5px;color:var(--ink-soft);margin-top:4px;">${escapeHtml(String(h['Old Value']||'—'))} → ${escapeHtml(String(h['New Value']||'—'))}</div>` : ''}
+  </div>`;
+}
+
+async function updateProjectField(projectId, field, value) {
+  const updates = {}; updates[field] = value;
+  const res = await apiCall('updateProject', { projectId, updates });
+  if (!res.ok) { showToast('⚠️ ' + res.error); return; }
+  showToast('✓ Saved');
+  await openWorkspace(state.currentWorkspaceUserId);
+}
+
+/* ============================================================
+   ADD MODALS
+   ============================================================ */
+function openProjectModal() {
+  toggleAddPicker();
+  openModal(`
+    <div class="modal-header"><h2>📁 Add Project</h2><button class="modal-close" onclick="closeModal()">✕</button></div>
+    <div class="modal-body">
+      <div class="field"><label>Project Name</label><input id="pmName" placeholder="e.g. 3PL Cost Optimisation"></div>
+      <div class="field"><label>Description</label><textarea id="pmDesc" placeholder="What is this project about?"></textarea></div>
+      <div class="field"><label>Status</label>
+        <select id="pmStatus">${PROJECT_STATUSES.map(s => `<option value="${s}">${s==='Open'?'Open / To Be Picked':s}</option>`).join('')}</select>
+      </div>
+      <div class="field"><label>ETA</label><input type="date" id="pmEta"></div>
+      <div class="field"><label>Impact</label><input id="pmImpact" placeholder="e.g. Reduce cost"></div>
+      <div class="field"><label>Priority</label><select id="pmPriority">${PRIORITIES.map(p => `<option value="${p}">${p}</option>`).join('')}</select></div>
+      <div class="field"><label>Dependency</label><input id="pmDependency" placeholder="Optional"></div>
+      <div class="field"><label>Stakeholders</label><input id="pmStakeholders" placeholder="Manager → Ops → Finance"></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="closeModal()">Cancel</button>
+      <button class="btn btn-primary" onclick="submitProjectModal()">Add Project</button>
+    </div>
+  `);
+}
+async function submitProjectModal() {
+  const project = {
+    projectName: val('pmName'), description: val('pmDesc'), status: val('pmStatus'),
+    eta: val('pmEta'), impact: val('pmImpact'), priority: val('pmPriority'),
+    dependency: val('pmDependency'), stakeholders: val('pmStakeholders')
+  };
+  if (!project.projectName || !project.eta) { showToast('⚠️ Name and ETA are required'); return; }
+  const res = await apiCall('createProject', { project });
+  if (!res.ok) { showToast('⚠️ ' + res.error); return; }
+  closeModal(); showToast('✓ Project added — nice work');
+  await openWorkspace(state.currentWorkspaceUserId);
+}
+
+function openIdeaModal() {
+  toggleAddPicker();
+  openModal(`
+    <div class="modal-header"><h2>💡 Add Idea</h2><button class="modal-close" onclick="closeModal()">✕</button></div>
+    <div class="modal-body">
+      <div class="field"><label>Type</label><select id="imType">${IDEA_TYPES.map(t => `<option value="${t}">${t}</option>`).join('')}</select></div>
+      <div class="field"><label>Idea Description</label><textarea id="imDesc" placeholder="What's the idea?"></textarea></div>
+      <div class="field"><label>Expected Impact</label><input id="imImpact" placeholder="What benefit could this create?"></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="closeModal()">Cancel</button>
+      <button class="btn btn-primary" onclick="submitIdeaModal()">Add Idea</button>
+    </div>
+  `);
+}
+async function submitIdeaModal() {
+  const idea = { type: val('imType'), description: val('imDesc'), expectedImpact: val('imImpact') };
+  if (!idea.description) { showToast('⚠️ Description is required'); return; }
+  const res = await apiCall('createIdea', { idea });
+  if (!res.ok) { showToast('⚠️ ' + res.error); return; }
+  closeModal(); showToast('✓ Idea captured');
+  await openWorkspace(state.currentWorkspaceUserId);
+}
+
+function openAdhocModal() {
+  toggleAddPicker();
+  const today = new Date().toISOString().slice(0,10);
+  openModal(`
+    <div class="modal-header"><h2>⚡ Add Ad-hoc Work</h2><button class="modal-close" onclick="closeModal()">✕</button></div>
+    <div class="modal-body">
+      <div class="field"><label>Task</label><input id="amTask" placeholder="e.g. Fix dashboard issue"></div>
+      <div class="field"><label>Time Spent (hours)</label><input type="number" step="0.25" min="0" id="amTime" placeholder="1.5"></div>
+      <div class="field"><label>Description</label><textarea id="amDesc" placeholder="What did you do?"></textarea></div>
+      <div class="field"><label>Source</label><input id="amSource" placeholder="e.g. Manager request"></div>
+      <div class="field"><label>Date</label><input type="date" id="amDate" value="${today}"></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="closeModal()">Cancel</button>
+      <button class="btn btn-primary" onclick="submitAdhocModal()">Add Entry</button>
+    </div>
+  `);
+}
+async function submitAdhocModal() {
+  const adhoc = { task: val('amTask'), timeSpent: val('amTime'), description: val('amDesc'), source: val('amSource'), date: val('amDate') };
+  if (!adhoc.task || !adhoc.timeSpent) { showToast('⚠️ Task and time spent are required'); return; }
+  const res = await apiCall('createAdhoc', { adhoc });
+  if (!res.ok) { showToast('⚠️ ' + res.error); return; }
+  closeModal(); showToast('✓ Logged — thanks for keeping this updated');
+  await openWorkspace(state.currentWorkspaceUserId);
+}
+
+/* ============================================================
+   ADMIN: TEAM MANAGEMENT
+   ============================================================ */
+async function openTeamManagement() {
+  toggleUserMenu();
+  renderLoading();
+  const res = await apiCall('getAllUsers', {});
+  if (!res.ok) { renderError(res.error); return; }
+  renderTeamManagement(res.data.users);
+}
+
+function renderTeamManagement(users) {
+  const rows = users.map(u => `
+    <tr>
+      <td style="font-family:var(--font-body);font-size:18px;">${u.avatar}</td>
+      <td class="name-cell">${escapeHtml(u.name)}</td>
+      <td style="font-family:var(--font-body);">${escapeHtml(u.email)}</td>
+      <td><span class="role-badge role-${u.role}">${u.role}</span></td>
+      <td class="status-${u.status}" style="font-family:var(--font-body);">${u.status}</td>
+      <td style="display:flex;gap:6px;">
+        <button class="btn btn-ghost btn-sm" onclick="openEditUserModal('${u.userId}','${escapeAttr(u.name)}','${escapeAttr(u.email)}','${u.avatar}')">Edit</button>
+        <button class="btn btn-ghost btn-sm" onclick="adminResetPw('${u.userId}','${escapeAttr(u.email)}')">Reset PW</button>
+        ${u.status === 'Active'
+          ? `<button class="btn btn-danger btn-sm" onclick="deactivateUser('${u.userId}')">Deactivate</button>`
+          : `<button class="btn btn-primary btn-sm" onclick="reactivateUser('${u.userId}')">Reactivate</button>`}
+      </td>
+    </tr>`).join('');
+
+  document.getElementById('mainContainer').innerHTML = `
+    <button class="back-link" onclick="goHome()">← Back to Townhall</button>
+    <div class="section-title">👑 Team Management <button class="btn btn-warm btn-sm" onclick="openAddUserModal()">+ Add Team Member</button></div>
+    <div class="mgmt-table-wrap">
+      <table>
+        <thead><tr><th></th><th>Name</th><th>Email</th><th>Role</th><th>Status</th><th>Actions</th></tr></thead>
+        <tbody>${rows}</tbody>
+      </table>
+    </div>
+  `;
+}
+
+function openAddUserModal() {
+  const avatarOptions = Object.keys(AVATAR_COLORS).map(a => `<option value="${a}">${a}</option>`).join('');
+  openModal(`
+    <div class="modal-header"><h2>Add Team Member</h2><button class="modal-close" onclick="closeModal()">✕</button></div>
+    <div class="modal-body">
+      <div class="field"><label>Name</label><input id="auName" placeholder="Full name"></div>
+      <div class="field"><label>Work Email</label><input type="email" id="auEmail" placeholder="name@company.com"></div>
+      <div class="field"><label>Avatar</label><select id="auAvatar">${avatarOptions}</select></div>
+      <p style="font-size:12.5px;color:var(--ink-soft);">A random 6-digit password will be generated and emailed to them automatically.</p>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="closeModal()">Cancel</button>
+      <button class="btn btn-primary" onclick="submitAddUser()">Create User</button>
+    </div>
+  `);
+}
+async function submitAddUser() {
+  const user = { name: val('auName'), email: val('auEmail'), avatar: val('auAvatar') };
+  if (!user.name || !user.email) { showToast('⚠️ Name and email required'); return; }
+  const res = await apiCall('addUser', { user });
+  if (!res.ok) { showToast('⚠️ ' + res.error); return; }
+  closeModal(); showToast('✓ Welcome email sent — they\'re all set');
+  openTeamManagement();
+}
+
+function openEditUserModal(userId, name, email, avatar) {
+  const avatarOptions = Object.keys(AVATAR_COLORS).map(a => `<option value="${a}" ${a===avatar?'selected':''}>${a}</option>`).join('');
+  openModal(`
+    <div class="modal-header"><h2>Edit ${escapeHtml(name)}</h2><button class="modal-close" onclick="closeModal()">✕</button></div>
+    <div class="modal-body">
+      <div class="field"><label>Name</label><input id="euName" value="${escapeAttr(name)}"></div>
+      <div class="field"><label>Work Email</label><input id="euEmail" value="${escapeAttr(email)}"></div>
+      <div class="field"><label>Avatar</label><select id="euAvatar">${avatarOptions}</select></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="closeModal()">Cancel</button>
+      <button class="btn btn-primary" onclick="submitEditUser('${userId}')">Save Changes</button>
+    </div>
+  `);
+}
+async function submitEditUser(userId) {
+  const updates = { name: val('euName'), email: val('euEmail'), avatar: val('euAvatar') };
+  const res = await apiCall('updateUser', { userId, updates });
+  if (!res.ok) { showToast('⚠️ ' + res.error); return; }
+  closeModal(); showToast('✓ Updated');
+  openTeamManagement();
+}
+
+async function deactivateUser(userId) {
+  if (!confirm('Deactivate this user? Their history stays intact and they can be reactivated later.')) return;
+  const res = await apiCall('deactivateUser', { userId });
+  showToast(res.ok ? '✓ Deactivated' : '⚠️ ' + res.error);
+  openTeamManagement();
+}
+async function reactivateUser(userId) {
+  const res = await apiCall('reactivateUser', { userId });
+  showToast(res.ok ? '✓ Reactivated' : '⚠️ ' + res.error);
+  openTeamManagement();
+}
+async function adminResetPw(userId, email) {
+  if (!confirm('Send a new password to ' + email + '?')) return;
+  const res = await apiCall('adminResetPassword', { userId });
+  showToast(res.ok ? '✓ New password emailed' : '⚠️ ' + res.error);
+}
+
+/* ============================================================
+   UTILS
+   ============================================================ */
+function togglePasswordVisibility(inputId, btn) {
+  const input = document.getElementById(inputId);
+  if (input.type === 'password') {
+    input.type = 'text';
+    btn.textContent = '🙈';
+    btn.setAttribute('aria-label', 'Hide password');
+  } else {
+    input.type = 'password';
+    btn.textContent = '👁';
+    btn.setAttribute('aria-label', 'Show password');
+  }
+}
+
+function val(id) { return document.getElementById(id).value.trim(); }
+function escapeHtml(str) {
+  if (str === null || str === undefined) return '';
+  return String(str).replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
+}
+function escapeAttr(str) { return escapeHtml(str).replace(/"/g, '&quot;'); }
+function formatDateInput(dateVal) {
+  if (!dateVal) return '';
+  const d = new Date(dateVal);
+  if (isNaN(d)) return '';
+  return d.toISOString().slice(0,10);
+}
+function formatDateDisplay(dateVal) {
+  if (!dateVal) return '—';
+  const d = new Date(dateVal);
+  if (isNaN(d)) return '—';
+  return d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
+}
+function formatDateTimeDisplay(dateVal) {
+  if (!dateVal) return '—';
+  const d = new Date(dateVal);
+  if (isNaN(d)) return '—';
+  return d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' }) + ' — ' +
+         d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+}
+</script>
+</body>
+</html>
