@@ -1,1321 +1,1507 @@
-/**
- * ============================================================================
- *  TOWNHALL — Backend (Google Apps Script)
- * ============================================================================
- *  A role-based project/idea/ad-hoc work tracker.
- *  Database  : this bound Google Sheet
- *  Frontend  : static index.html (hosted on GitHub Pages) calling this
- *              Web App via fetch() using JSON action requests.
- *
- *  SETUP (do this once, from the Apps Script editor):
- *    1. Open Extensions > Apps Script on your Google Sheet, paste this file.
- *    2. Run `setupSheets` once (Run menu). This will:
- *         - create any missing tabs with correct headers
- *         - add missing columns to Users (Role, Password Hash, Password Salt,
- *           Created At, Last Login) without touching existing data
- *         - mark the user matching Settings!Admin Email as Role = Admin
- *    3. Run `initializeMissingPasswords` once. This generates a 6-digit
- *       password for every user who doesn't have one yet, and emails it
- *       to them (uses MailApp — sends from your Google account).
- *    4. Run `setupDailyTrigger` once. This installs a daily time-based
- *       trigger that snapshots every project's status into DailySnapshots.
- *    5. Deploy > New deployment > Web app.
- *         Execute as: Me
- *         Who has access: Anyone
- *       Copy the /exec URL — that's what index.html calls.
- *
- *  API CONTRACT
- *  ------------
- *  All requests are POST to the /exec URL, body = JSON.stringify({...}),
- *  sent with Content-Type: text/plain;charset=utf-8 (NOT application/json —
- *  this avoids a CORS preflight, which Apps Script Web Apps cannot answer).
- *
- *  Every request body needs an `action` key. Authenticated actions also
- *  need a `token` key (returned by the `login` action).
- *
- *  Response shape is always: { ok: true, data: ... } or { ok: false, error: "..." }
- * ============================================================================
- */
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Cumin</title>
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg viewBox='0 0 100 100' xmlns='http://www.w3.org/2000/svg'><ellipse cx='68.77' cy='19.96' rx='3.1' ry='1.35' fill='%238B6A2E' transform='rotate(40.9 68.77 19.96)'/><ellipse cx='64.82' cy='17.63' rx='3.1' ry='1.35' fill='%23A67C3B' transform='rotate(33.5 64.82 17.63)'/><ellipse cx='60.50' cy='16.10' rx='3.1' ry='1.35' fill='%236B4F23' transform='rotate(18.6 60.50 16.10)'/><ellipse cx='55.99' cy='15.40' rx='3.1' ry='1.35' fill='%23B98D47' transform='rotate(2.6 55.99 15.40)'/><ellipse cx='51.46' cy='15.49' rx='3.1' ry='1.35' fill='%237A5A28' transform='rotate(-7.4 51.46 15.49)'/><ellipse cx='47.07' cy='16.25' rx='3.1' ry='1.35' fill='%2394722F' transform='rotate(-9.2 47.07 16.25)'/><ellipse cx='42.88' cy='17.54' rx='3.1' ry='1.35' fill='%238B6A2E' transform='rotate(-7.4 42.88 17.54)'/><ellipse cx='38.94' cy='19.20' rx='3.1' ry='1.35' fill='%23A67C3B' transform='rotate(-9.8 38.94 19.20)'/><ellipse cx='35.20' cy='21.13' rx='3.1' ry='1.35' fill='%236B4F23' transform='rotate(-20.5 35.20 21.13)'/><ellipse cx='31.61' cy='23.29' rx='3.1' ry='1.35' fill='%23B98D47' transform='rotate(-36.8 31.61 23.29)'/><ellipse cx='28.15' cy='25.68' rx='3.1' ry='1.35' fill='%237A5A28' transform='rotate(-51.2 28.15 25.68)'/><ellipse cx='24.82' cy='28.37' rx='3.1' ry='1.35' fill='%2394722F' transform='rotate(-57.8 24.82 28.37)'/><ellipse cx='21.71' cy='31.44' rx='3.1' ry='1.35' fill='%238B6A2E' transform='rotate(-57.4 21.71 31.44)'/><ellipse cx='18.95' cy='34.94' rx='3.1' ry='1.35' fill='%23A67C3B' transform='rotate(-56.4 18.95 34.94)'/><ellipse cx='16.73' cy='38.88' rx='3.1' ry='1.35' fill='%236B4F23' transform='rotate(-61.9 16.73 38.88)'/><ellipse cx='15.19' cy='43.18' rx='3.1' ry='1.35' fill='%23B98D47' transform='rotate(-75.4 15.19 43.18)'/><ellipse cx='14.47' cy='47.70' rx='3.1' ry='1.35' fill='%237A5A28' transform='rotate(-91.9 14.47 47.70)'/><ellipse cx='14.63' cy='52.29' rx='3.1' ry='1.35' fill='%2394722F' transform='rotate(-103.7 14.63 52.29)'/><ellipse cx='15.62' cy='56.74' rx='3.1' ry='1.35' fill='%238B6A2E' transform='rotate(-107.2 15.62 56.74)'/><ellipse cx='17.34' cy='60.92' rx='3.1' ry='1.35' fill='%23A67C3B' transform='rotate(-105.6 17.34 60.92)'/><ellipse cx='19.62' cy='64.74' rx='3.1' ry='1.35' fill='%236B4F23' transform='rotate(-106.4 19.62 64.74)'/><ellipse cx='22.29' cy='68.18' rx='3.1' ry='1.35' fill='%23B98D47' transform='rotate(-115.2 22.29 68.18)'/><ellipse cx='25.23' cy='71.28' rx='3.1' ry='1.35' fill='%237A5A28' transform='rotate(-130.7 25.23 71.28)'/><ellipse cx='28.33' cy='74.12' rx='3.1' ry='1.35' fill='%2394722F' transform='rotate(-146.2 28.33 74.12)'/><ellipse cx='31.60' cy='76.73' rx='3.1' ry='1.35' fill='%238B6A2E' transform='rotate(-154.9 31.60 76.73)'/><ellipse cx='35.05' cy='79.16' rx='3.1' ry='1.35' fill='%23A67C3B' transform='rotate(-155.7 35.05 79.16)'/><ellipse cx='38.75' cy='81.33' rx='3.1' ry='1.35' fill='%236B4F23' transform='rotate(-154.1 38.75 81.33)'/><ellipse cx='42.73' cy='83.16' rx='3.1' ry='1.35' fill='%23B98D47' transform='rotate(-157.6 42.73 83.16)'/><ellipse cx='47.00' cy='84.48' rx='3.1' ry='1.35' fill='%237A5A28' transform='rotate(-169.6 47.00 84.48)'/><ellipse cx='51.49' cy='85.13' rx='3.1' ry='1.35' fill='%2394722F' transform='rotate(-186.0 51.49 85.13)'/><ellipse cx='56.06' cy='84.99' rx='3.1' ry='1.35' fill='%238B6A2E' transform='rotate(-199.5 56.06 84.99)'/><ellipse cx='60.53' cy='84.00' rx='3.1' ry='1.35' fill='%23A67C3B' transform='rotate(-204.9 60.53 84.00)'/><ellipse cx='64.74' cy='82.18' rx='3.1' ry='1.35' fill='%236B4F23' transform='rotate(-203.8 64.74 82.18)'/><ellipse cx='68.52' cy='79.64' rx='3.1' ry='1.35' fill='%23B98D47' transform='rotate(-203.4 68.52 79.64)'/><ellipse cx='63.46' cy='28.46' rx='3.1' ry='1.35' fill='%237A5A28' transform='rotate(22.0 63.46 28.46)'/><ellipse cx='60.22' cy='26.60' rx='3.1' ry='1.35' fill='%2394722F' transform='rotate(17.7 60.22 26.60)'/><ellipse cx='56.79' cy='24.98' rx='3.1' ry='1.35' fill='%238B6A2E' transform='rotate(18.3 56.79 24.98)'/><ellipse cx='53.12' cy='23.68' rx='3.1' ry='1.35' fill='%23A67C3B' transform='rotate(16.3 53.12 23.68)'/><ellipse cx='49.22' cy='22.83' rx='3.1' ry='1.35' fill='%236B4F23' transform='rotate(6.3 49.22 22.83)'/><ellipse cx='45.14' cy='22.61' rx='3.1' ry='1.35' fill='%23B98D47' transform='rotate(-10.3 45.14 22.61)'/><ellipse cx='41.03' cy='23.15' rx='3.1' ry='1.35' fill='%237A5A28' transform='rotate(-26.8 41.03 23.15)'/><ellipse cx='37.07' cy='24.52' rx='3.1' ry='1.35' fill='%2394722F' transform='rotate(-36.3 37.07 24.52)'/><ellipse cx='33.49' cy='26.70' rx='3.1' ry='1.35' fill='%238B6A2E' transform='rotate(-38.0 33.49 26.70)'/><ellipse cx='30.46' cy='29.57' rx='3.1' ry='1.35' fill='%23A67C3B' transform='rotate(-37.4 30.46 29.57)'/><ellipse cx='28.09' cy='32.97' rx='3.1' ry='1.35' fill='%236B4F23' transform='rotate(-42.2 28.09 32.97)'/><ellipse cx='26.40' cy='36.67' rx='3.1' ry='1.35' fill='%23B98D47' transform='rotate(-55.2 26.40 36.67)'/><ellipse cx='25.32' cy='40.51' rx='3.1' ry='1.35' fill='%237A5A28' transform='rotate(-72.8 25.32 40.51)'/><ellipse cx='24.75' cy='44.35' rx='3.1' ry='1.35' fill='%2394722F' transform='rotate(-87.1 24.75 44.35)'/><ellipse cx='24.56' cy='48.13' rx='3.1' ry='1.35' fill='%238B6A2E' transform='rotate(-93.3 24.56 48.13)'/><ellipse cx='24.67' cy='51.86' rx='3.1' ry='1.35' fill='%23A67C3B' transform='rotate(-93.2 24.67 51.86)'/><ellipse cx='25.04' cy='55.59' rx='3.1' ry='1.35' fill='%236B4F23' transform='rotate(-94.0 25.04 55.59)'/><ellipse cx='25.72' cy='59.34' rx='3.1' ry='1.35' fill='%23B98D47' transform='rotate(-101.9 25.72 59.34)'/><ellipse cx='26.83' cy='63.08' rx='3.1' ry='1.35' fill='%237A5A28' transform='rotate(-117.5 26.83 63.08)'/><ellipse cx='28.46' cy='66.75' rx='3.1' ry='1.35' fill='%2394722F' transform='rotate(-134.7 28.46 66.75)'/><ellipse cx='30.71' cy='70.17' rx='3.1' ry='1.35' fill='%238B6A2E' transform='rotate(-146.2 30.71 70.17)'/><ellipse cx='33.60' cy='73.15' rx='3.1' ry='1.35' fill='%23A67C3B' transform='rotate(-149.4 33.60 73.15)'/><ellipse cx='37.07' cy='75.50' rx='3.1' ry='1.35' fill='%236B4F23' transform='rotate(-148.6 37.07 75.50)'/><ellipse cx='40.96' cy='77.06' rx='3.1' ry='1.35' fill='%23B98D47' transform='rotate(-151.6 40.96 77.06)'/><ellipse cx='45.07' cy='77.76' rx='3.1' ry='1.35' fill='%237A5A28' transform='rotate(-162.9 45.07 77.76)'/><ellipse cx='49.20' cy='77.64' rx='3.1' ry='1.35' fill='%2394722F' transform='rotate(-180.0 49.20 77.64)'/><ellipse cx='53.18' cy='76.81' rx='3.1' ry='1.35' fill='%238B6A2E' transform='rotate(-195.8 53.18 76.81)'/><ellipse cx='56.89' cy='75.42' rx='3.1' ry='1.35' fill='%23A67C3B' transform='rotate(-203.9 56.89 75.42)'/><ellipse cx='60.32' cy='73.64' rx='3.1' ry='1.35' fill='%236B4F23' transform='rotate(-204.8 60.32 73.64)'/><ellipse cx='63.50' cy='71.60' rx='3.1' ry='1.35' fill='%23B98D47' transform='rotate(-204.6 63.50 71.60)'/></svg>">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=Manrope:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@500;600&display=swap" rel="stylesheet">
+<style>
+/* ============================================================
+   TOWNHALL — Design tokens
+   ============================================================ */
+:root{
+  --bg:#F3F4F9;
+  --surface:#FFFFFF;
+  --surface-alt:#F7F8FB;
+  --border:#E2E4EC;
+  --ink:#1E2233;
+  --ink-soft:#5B6072;
+  --ink-faint:#9498A8;
+  --primary:#4F5FE0;
+  --primary-dark:#3F4DC4;
+  --primary-soft:#EBEDFB;
+  --warm:#C98A2E;
+  --warm-dark:#A9701E;
+  --warm-soft:#F7EDDC;
+  --green:#1E8E5A;
+  --green-soft:#E4F3EC;
+  --amber:#B97A1D;
+  --amber-soft:#F6ECDA;
+  --red:#C4432E;
+  --red-soft:#FAE8E4;
+  --shadow-sm:0 1px 2px rgba(30,34,51,0.05);
+  --shadow-md:0 4px 16px rgba(30,34,51,0.07);
+  --shadow-lg:0 16px 40px rgba(30,34,51,0.14);
+  --radius-sm:6px;
+  --radius-md:10px;
+  --radius-lg:14px;
+  --font-display:'Fraunces', serif;
+  --font-body:'Manrope', sans-serif;
+  --font-mono:'IBM Plex Mono', monospace;
+}
 
-// ============================================================================
-// CONFIG
-// ============================================================================
+*{box-sizing:border-box;}
+html,body{margin:0;padding:0;}
+body{
+  background:var(--bg);
+  font-family:var(--font-body);
+  color:var(--ink);
+  min-height:100vh;
+  -webkit-font-smoothing:antialiased;
+}
+button{font-family:inherit;cursor:pointer;}
+input,select,textarea{font-family:inherit;}
+a{color:inherit;}
+::selection{background:var(--warm-soft);}
 
-var SHEETS = {
-  USERS: 'Users',
-  PROJECTS: 'Projects',
-  IDEAS: 'Ideas',
-  ADHOC: 'AdHoc',
-  ACTIVITY: 'Activity_Log',
-  SETTINGS: 'Settings',
-  SESSIONS: 'Sessions',
-  SNAPSHOTS: 'DailySnapshots',
-  DAILY_WORK: 'DailyWorkLog'
+/* subtle ambient blobs on auth screen */
+.blob{position:fixed;border-radius:50%;filter:blur(80px);opacity:0.18;z-index:0;pointer-events:none;}
+
+/* ============================================================
+   Layout shells
+   ============================================================ */
+#app{min-height:100vh;}
+.hidden{display:none !important;}
+
+.topbar{
+  position:sticky;top:0;z-index:40;
+  display:flex;align-items:center;gap:16px;
+  padding:14px 28px;
+  background:rgba(238,241,252,0.85);
+  backdrop-filter:blur(10px);
+  border-bottom:1px solid var(--border);
+}
+.wordmark{
+  font-family:var(--font-display);
+  font-weight:700;font-size:22px;letter-spacing:-0.01em;
+  display:flex;align-items:center;gap:6px;
+}
+.wordmark .dot{width:9px;height:9px;border-radius:50%;background:var(--warm);display:inline-block;}
+.cumin-mark{width:26px;height:26px;flex-shrink:0;transition:transform .25s;}
+.cumin-mark:hover{animation:cuminWiggle .6s ease;}
+.auth-wordmark .cumin-mark{width:34px;height:34px;vertical-align:middle;margin-right:6px;}
+.cumin-mark .seed{
+  opacity:0;
+  transform-box:fill-box;
+  transform-origin:center;
+  animation:seedDrop .45s cubic-bezier(.34,1.56,.64,1) forwards;
+}
+@keyframes seedDrop{
+  0%{opacity:0;transform:rotate(var(--rot)) translateY(-6px) scale(.3);}
+  60%{opacity:1;}
+  100%{opacity:1;transform:rotate(var(--rot)) translateY(0) scale(1);}
+}
+@keyframes cuminWiggle{
+  0%,100%{transform:rotate(0deg);}
+  25%{transform:rotate(-8deg);}
+  75%{transform:rotate(8deg);}
+}
+.topbar-spacer{flex:1;}
+.search-wrap{position:relative;width:280px;max-width:40vw;}
+.search-input{
+  width:100%;padding:9px 14px 9px 36px;border-radius:999px;border:1px solid var(--border);
+  background:var(--surface);font-size:14px;outline:none;transition:box-shadow .15s;
+}
+.search-input:focus{box-shadow:0 0 0 3px var(--primary-soft);border-color:var(--primary);}
+.search-icon{position:absolute;left:12px;top:50%;transform:translateY(-50%);font-size:14px;opacity:.5;}
+.search-results{
+  position:absolute;top:calc(100% + 6px);left:0;right:0;background:var(--surface);
+  border:1px solid var(--border);border-radius:var(--radius-sm);box-shadow:var(--shadow-md);
+  max-height:320px;overflow-y:auto;z-index:50;
+}
+.search-result-item{padding:10px 14px;font-size:13.5px;border-bottom:1px solid var(--border);}
+.search-result-item:last-child{border-bottom:none;}
+.search-result-item:hover{background:var(--surface-alt);cursor:pointer;}
+.search-result-type{font-size:10.5px;text-transform:uppercase;letter-spacing:.06em;color:var(--ink-faint);font-family:var(--font-mono);}
+
+.icon-btn{
+  width:38px;height:38px;border-radius:50%;border:1px solid var(--border);background:var(--surface);
+  display:flex;align-items:center;justify-content:center;font-size:17px;position:relative;
+  transition:transform .12s, box-shadow .12s;
+}
+.icon-btn:hover{transform:translateY(-1px);box-shadow:var(--shadow-sm);}
+.badge{
+  position:absolute;top:-4px;right:-4px;background:var(--red);color:#fff;
+  font-size:10px;font-weight:700;min-width:16px;height:16px;border-radius:8px;
+  display:flex;align-items:center;justify-content:center;padding:0 4px;font-family:var(--font-mono);
+}
+
+.avatar-chip{
+  width:38px;height:38px;border-radius:50%;background:var(--warm-soft);
+  display:flex;align-items:center;justify-content:center;font-size:18px;border:1px solid var(--border);
+}
+.user-menu-wrap{position:relative;}
+.user-menu{
+  position:absolute;top:calc(100% + 8px);right:0;background:var(--surface);border:1px solid var(--border);
+  border-radius:var(--radius-sm);box-shadow:var(--shadow-md);min-width:180px;overflow:hidden;z-index:50;
+}
+.user-menu button{
+  display:block;width:100%;text-align:left;padding:11px 14px;border:none;background:none;font-size:13.5px;
+}
+.user-menu button:hover{background:var(--surface-alt);}
+
+.notif-dropdown{
+  position:absolute;top:calc(100% + 8px);right:0;background:var(--surface);border:1px solid var(--border);
+  border-radius:var(--radius-md);box-shadow:var(--shadow-md);width:340px;max-height:400px;overflow-y:auto;z-index:50;
+}
+.notif-header{padding:14px 16px;font-weight:700;font-size:13px;border-bottom:1px solid var(--border);}
+.notif-item{padding:12px 16px;border-bottom:1px solid var(--border);display:flex;gap:10px;align-items:flex-start;font-size:13px;cursor:pointer;}
+.notif-item:hover{background:var(--surface-alt);}
+.notif-dot{width:8px;height:8px;border-radius:50%;margin-top:5px;flex-shrink:0;}
+.notif-empty{padding:28px 16px;text-align:center;color:var(--ink-faint);font-size:13px;}
+
+.container{max-width:1180px;margin:0 auto;padding:28px;}
+
+/* ============================================================
+   Auth screen
+   ============================================================ */
+#authScreen{
+  min-height:100vh;display:flex;align-items:center;justify-content:center;position:relative;overflow:hidden;
+}
+.auth-card{
+  position:relative;z-index:1;background:var(--surface);border-radius:var(--radius-lg);
+  padding:44px 40px;width:380px;box-shadow:var(--shadow-lg);border:1px solid var(--border);
+}
+.auth-wordmark{font-family:var(--font-display);font-size:25px;font-weight:600;margin:0 0 4px;color:var(--ink);}
+.auth-sub{color:var(--ink-soft);font-size:13.5px;margin:0 0 26px;}
+.field{margin-bottom:16px;}
+.field label{display:block;font-size:12.5px;font-weight:700;color:var(--ink-soft);margin-bottom:6px;text-transform:uppercase;letter-spacing:.04em;}
+.field input,.field select,.field textarea{
+  width:100%;padding:11px 13px;border-radius:var(--radius-sm);border:1.5px solid var(--border);
+  font-size:14.5px;outline:none;background:var(--surface-alt);transition:border-color .15s, background .15s;
+}
+.field input:focus,.field select:focus,.field textarea:focus{border-color:var(--primary);background:var(--surface);}
+.field textarea{resize:vertical;min-height:70px;}
+.password-wrap{position:relative;}
+.password-wrap input{padding-right:42px;}
+.password-eye{
+  position:absolute;right:4px;top:50%;transform:translateY(-50%);background:none;border:none;
+  width:32px;height:32px;border-radius:8px;font-size:15px;opacity:.55;display:flex;align-items:center;justify-content:center;
+}
+.password-eye:hover{opacity:1;background:var(--surface-alt);}
+.btn{
+  border:none;border-radius:999px;padding:11px 22px;font-weight:700;font-size:14px;
+  transition:transform .12s, box-shadow .12s, opacity .12s;
+}
+.btn:active{transform:scale(0.97);}
+.btn-primary{background:var(--primary);color:#fff;}
+.btn-primary:hover{background:var(--primary-dark);}
+.btn-warm{background:var(--warm);color:#3D2600;}
+.btn-warm:hover{background:var(--warm-dark);}
+.btn-ghost{background:none;color:var(--ink-soft);border:1.5px solid var(--border);}
+.btn-ghost:hover{background:var(--surface-alt);}
+.btn-danger{background:var(--red-soft);color:var(--red);}
+.btn-danger:hover{opacity:.8;}
+.btn-block{width:100%;}
+.btn-sm{padding:6px 14px;font-size:12.5px;}
+.link-btn{background:none;border:none;color:var(--primary);font-weight:700;font-size:13px;padding:0;}
+.error-msg{
+  background:var(--red-soft);color:var(--red);padding:10px 13px;border-radius:var(--radius-sm);
+  font-size:13px;margin-bottom:16px;font-weight:600;
+}
+.success-msg{
+  background:var(--green-soft);color:var(--green);padding:10px 13px;border-radius:var(--radius-sm);
+  font-size:13px;margin-bottom:16px;font-weight:600;
+}
+
+/* ============================================================
+   Home screen
+   ============================================================ */
+.greeting-banner{
+  background:var(--surface);
+  border:1px solid var(--border);
+  border-left:3px solid var(--warm);
+  border-radius:var(--radius-lg);padding:26px 30px;margin-bottom:22px;position:relative;overflow:hidden;
+}
+.greeting-banner h1{font-family:var(--font-display);font-size:25px;font-weight:600;margin:0 0 4px;color:var(--ink);}
+.greeting-banner p{margin:0;color:var(--ink-soft);font-size:13.5px;font-weight:500;}
+
+.stat-row{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-top:20px;}
+.stat-card{
+  background:var(--surface-alt);border:1px solid var(--border);border-radius:var(--radius-md);padding:14px 16px;
+}
+.stat-num{font-family:var(--font-mono);font-size:22px;font-weight:600;color:var(--ink);}
+.stat-label{font-size:10.5px;font-weight:700;color:var(--ink-soft);text-transform:uppercase;letter-spacing:.05em;margin-top:2px;}
+
+.section-title{
+  font-family:var(--font-display);font-size:17px;font-weight:600;margin:28px 0 14px;color:var(--ink);
+  display:flex;align-items:center;justify-content:space-between;
+}
+.section-title span.count{font-family:var(--font-mono);font-size:12px;color:var(--ink-faint);font-weight:500;}
+
+.chip-row{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:18px;}
+.chip{
+  padding:7px 15px;border-radius:999px;font-size:13px;font-weight:700;border:1.5px solid var(--border);
+  background:var(--surface);color:var(--ink-soft);transition:all .12s;
+}
+.chip.active{background:var(--primary);color:#fff;border-color:var(--primary);}
+.chip:hover:not(.active){border-color:var(--primary);color:var(--primary);}
+
+.team-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:14px;}
+.team-card{
+  background:var(--surface);border-radius:var(--radius-md);border:1px solid var(--border);
+  overflow:hidden;cursor:pointer;transition:box-shadow .15s, border-color .15s;position:relative;
+}
+.team-card:hover{box-shadow:var(--shadow-md);border-color:var(--ink-faint);}
+.team-card-roof{height:3px;opacity:0.6;}
+.team-card-body{padding:16px 18px;}
+.team-card-avatar{
+  width:44px;height:44px;border-radius:50%;display:flex;align-items:center;justify-content:center;
+  font-size:21px;margin-bottom:10px;background:var(--surface-alt);border:1px solid var(--border);
+}
+.team-card-name{font-weight:700;font-size:14.5px;margin-bottom:10px;color:var(--ink);}
+.team-card-stats{display:flex;gap:12px;}
+.tcs-item{text-align:left;}
+.tcs-num{font-family:var(--font-mono);font-weight:600;font-size:15px;}
+.tcs-label{font-size:9.5px;color:var(--ink-faint);text-transform:uppercase;letter-spacing:.03em;font-weight:700;}
+
+/* Daily summary table */
+.summary-table-wrap{background:var(--surface);border-radius:var(--radius-md);border:1px solid var(--border);overflow:hidden;}
+table{width:100%;border-collapse:collapse;font-size:13px;}
+th{
+  text-align:left;padding:12px 14px;background:var(--surface-alt);font-size:11px;text-transform:uppercase;
+  letter-spacing:.04em;color:var(--ink-soft);font-weight:800;border-bottom:1px solid var(--border);
+}
+td{padding:11px 14px;border-bottom:1px solid var(--border);font-family:var(--font-mono);}
+td.name-cell{font-family:var(--font-body);font-weight:700;}
+tr:last-child td{border-bottom:none;}
+tr.total-row td{font-weight:800;background:var(--surface-alt);}
+
+/* ============================================================
+   Modal / overlay
+   ============================================================ */
+.overlay{
+  position:fixed;inset:0;background:rgba(36,28,59,0.45);z-index:100;
+  display:flex;align-items:center;justify-content:center;padding:20px;backdrop-filter:blur(2px);
+}
+.modal{
+  background:var(--surface);border-radius:var(--radius-lg);width:480px;max-width:100%;
+  max-height:88vh;overflow-y:auto;box-shadow:var(--shadow-lg);
+}
+.modal-header{
+  padding:22px 26px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;
+}
+.modal-header h2{font-family:var(--font-display);font-size:19px;margin:0;font-weight:600;}
+.modal-close{background:none;border:none;font-size:20px;color:var(--ink-faint);width:30px;height:30px;border-radius:50%;}
+.modal-close:hover{background:var(--surface-alt);}
+.modal-body{padding:22px 26px;}
+.modal-footer{padding:18px 26px 24px;display:flex;gap:10px;justify-content:flex-end;}
+
+.type-picker{display:flex;flex-direction:column;gap:10px;}
+.type-picker button{
+  display:flex;align-items:center;gap:12px;padding:16px;border-radius:var(--radius-md);
+  border:1.5px solid var(--border);background:var(--surface-alt);text-align:left;font-weight:700;font-size:14.5px;
+  transition:border-color .12s, background .12s;
+}
+.type-picker button:hover{border-color:var(--primary);background:var(--primary-soft);}
+.type-picker .tp-icon{font-size:22px;}
+.type-picker .tp-sub{font-size:12px;font-weight:500;color:var(--ink-soft);display:block;margin-top:2px;}
+
+/* ============================================================
+   Workspace view
+   ============================================================ */
+.workspace-header{
+  display:flex;align-items:center;gap:16px;background:var(--surface);border-radius:var(--radius-lg);
+  padding:20px 24px;margin-bottom:22px;border:1px solid var(--border);flex-wrap:wrap;
+}
+.ws-avatar{width:52px;height:52px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:24px;background:var(--surface-alt);border:1px solid var(--border);}
+.ws-name{font-family:var(--font-display);font-size:20px;font-weight:600;margin:0;color:var(--ink);}
+.ws-meta{color:var(--ink-soft);font-size:13px;margin-top:2px;}
+.ws-spacer{flex:1;}
+.back-link{display:flex;align-items:center;gap:6px;font-size:13.5px;font-weight:700;color:var(--ink-soft);background:none;border:none;margin-bottom:14px;}
+.back-link:hover{color:var(--primary);}
+
+.tab-row{display:flex;gap:6px;margin-bottom:18px;background:var(--surface);border:1px solid var(--border);border-radius:999px;padding:4px;width:fit-content;}
+.tab-btn{padding:8px 18px;border-radius:999px;border:none;background:none;font-weight:700;font-size:13.5px;color:var(--ink-soft);}
+.tab-btn.active{background:var(--primary);color:#fff;}
+
+.card-list{display:flex;flex-direction:column;gap:12px;}
+.item-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-md);padding:18px 20px;}
+.item-card-top{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:8px;}
+.item-title{font-weight:800;font-size:15px;}
+.item-desc{color:var(--ink-soft);font-size:13.5px;line-height:1.5;margin:4px 0 12px;}
+
+.pill{
+  display:inline-flex;align-items:center;gap:5px;padding:3px 10px;border-radius:5px;
+  font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.03em;
+}
+.pill-green{background:var(--green-soft);color:var(--green);}
+.pill-amber{background:var(--amber-soft);color:var(--amber);}
+.pill-red{background:var(--red-soft);color:var(--red);}
+.pill-neutral{background:var(--surface-alt);color:var(--ink-soft);border:1px solid var(--border);}
+.pill-priority-P0{background:var(--red-soft);color:var(--red);}
+.pill-priority-P1{background:var(--amber-soft);color:var(--amber);}
+.pill-priority-P2{background:var(--primary-soft);color:var(--primary);}
+
+.meta-row{display:flex;flex-wrap:wrap;gap:16px;margin:12px 0;font-size:12.5px;color:var(--ink-soft);}
+.meta-item b{color:var(--ink);font-weight:700;}
+
+/* Zone bar — signature element */
+.zonebar-wrap{margin:14px 0 6px;}
+.zonebar{position:relative;height:8px;border-radius:999px;overflow:hidden;display:flex;background:var(--surface-alt);}
+.zonebar div{height:100%;}
+.zonebar .z-green{background:var(--green);}
+.zonebar .z-amber{background:var(--amber);}
+.zonebar .z-red{background:var(--red);}
+.zonebar-marker{
+  position:absolute;top:-2px;width:2px;height:12px;border-radius:1px;background:var(--ink);
+  transform:translateX(-50%);
+}
+.zonebar-label{font-size:11px;color:var(--ink-soft);margin-top:6px;font-family:var(--font-mono);font-weight:600;}
+
+.stakeholder-chain{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin-top:10px;}
+.stakeholder-node{background:var(--primary-soft);color:var(--primary-dark);padding:4px 11px;border-radius:999px;font-size:12px;font-weight:700;}
+.stakeholder-arrow{color:var(--ink-faint);font-size:13px;}
+
+.inline-edit-row{display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin-top:10px;}
+.inline-select,.inline-date{
+  padding:6px 10px;border-radius:8px;border:1.5px solid var(--border);font-size:12.5px;font-weight:700;
+  background:var(--surface-alt);
+}
+
+.empty-state{
+  text-align:center;padding:50px 20px;color:var(--ink-faint);background:var(--surface);
+  border-radius:var(--radius-md);border:1px dashed var(--border);font-size:14px;
+}
+
+.collapsible{border:1px solid var(--border);border-radius:var(--radius-sm);margin-top:8px;overflow:hidden;}
+.collapsible-head{padding:10px 14px;background:var(--surface-alt);font-weight:700;font-size:13px;display:flex;justify-content:space-between;align-items:center;}
+.collapsible-body{padding:12px 14px;font-size:13px;}
+
+.save-toast{
+  position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:var(--ink);color:#fff;
+  padding:10px 20px;border-radius:999px;font-size:13px;font-weight:700;z-index:200;
+  box-shadow:var(--shadow-lg);opacity:0;transition:opacity .2s, transform .2s;pointer-events:none;
+}
+.save-toast.show{opacity:1;transform:translateX(-50%) translateY(-4px);}
+
+.add-btn-wrap{position:relative;}
+
+/* Team management (admin) */
+.mgmt-table-wrap{background:var(--surface);border-radius:var(--radius-md);border:1px solid var(--border);overflow:hidden;}
+
+/* Weekly summary chart */
+.week-summary-row{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:22px;}
+.week-stat{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-md);padding:16px;}
+.week-stat-num{font-family:var(--font-mono);font-size:22px;font-weight:600;color:var(--ink);}
+.week-stat-label{font-size:10.5px;font-weight:700;color:var(--ink-soft);text-transform:uppercase;letter-spacing:.04em;margin-top:2px;}
+.chart-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-md);padding:20px 22px;}
+.chart-card h3{font-family:var(--font-display);font-size:15px;font-weight:600;margin:0 0 16px;color:var(--ink);}
+.bar-chart{display:flex;align-items:flex-end;gap:10px;height:120px;}
+.bar-col{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;height:100%;gap:6px;}
+.bar-track{width:100%;height:100%;display:flex;align-items:flex-end;justify-content:center;}
+.bar-fill{width:60%;background:var(--primary);border-radius:3px 3px 0 0;min-height:2px;transition:height .3s;}
+.bar-day-label{font-size:10.5px;color:var(--ink-soft);font-weight:700;}
+.bar-value{font-family:var(--font-mono);font-size:10.5px;color:var(--ink-faint);}
+
+/* Daily check-in */
+.checkin-row{display:flex;align-items:center;gap:8px;margin-top:12px;padding-top:12px;border-top:1px solid var(--border);}
+.checkin-row input[type=checkbox]{width:16px;height:16px;accent-color:var(--primary);cursor:pointer;}
+.checkin-label{font-size:12.5px;font-weight:600;color:var(--ink-soft);cursor:pointer;}
+.checkin-row.logged .checkin-label{color:var(--green);}
+.checkin-note{font-size:12px;color:var(--ink-faint);margin-top:4px;font-style:italic;}
+.role-badge{font-size:10.5px;font-weight:800;padding:3px 9px;border-radius:999px;text-transform:uppercase;}
+.role-Admin{background:var(--warm-soft);color:var(--warm-dark);}
+.role-User{background:var(--surface-alt);color:var(--ink-soft);}
+.status-Active{color:var(--green);font-weight:700;}
+.status-Inactive{color:var(--ink-faint);font-weight:700;}
+
+@media (max-width:640px){
+  .stat-row{grid-template-columns:repeat(2,1fr);}
+  .week-summary-row{grid-template-columns:repeat(2,1fr);}
+  .container{padding:16px;}
+  .search-wrap{display:none;}
+  .tab-row{flex-wrap:wrap;width:100%;border-radius:var(--radius-md);}
+  .workspace-header{padding:16px 18px;}
+  .add-btn-wrap{width:100%;}
+  .add-btn-wrap .btn-primary{width:100%;}
+}
+</style>
+</head>
+<body>
+
+<div id="app">
+
+  <!-- ============================================================
+       AUTH SCREEN
+       ============================================================ -->
+  <div id="authScreen">
+    <div class="blob" style="width:420px;height:420px;background:var(--warm);top:-140px;left:-120px;"></div>
+    <div class="blob" style="width:360px;height:360px;background:var(--primary);bottom:-140px;right:-100px;"></div>
+
+    <div class="auth-card">
+      <p class="auth-wordmark"><svg class="cumin-mark" viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg"><ellipse class="seed" cx="68.77" cy="19.96" rx="3.1" ry="1.35" fill="#8B6A2E" style="--rot:40.9deg;animation-delay:0ms"/><ellipse class="seed" cx="64.82" cy="17.63" rx="3.1" ry="1.35" fill="#A67C3B" style="--rot:33.5deg;animation-delay:17ms"/><ellipse class="seed" cx="60.50" cy="16.10" rx="3.1" ry="1.35" fill="#6B4F23" style="--rot:18.6deg;animation-delay:33ms"/><ellipse class="seed" cx="55.99" cy="15.40" rx="3.1" ry="1.35" fill="#B98D47" style="--rot:2.6deg;animation-delay:50ms"/><ellipse class="seed" cx="51.46" cy="15.49" rx="3.1" ry="1.35" fill="#7A5A28" style="--rot:-7.4deg;animation-delay:67ms"/><ellipse class="seed" cx="47.07" cy="16.25" rx="3.1" ry="1.35" fill="#94722F" style="--rot:-9.2deg;animation-delay:83ms"/><ellipse class="seed" cx="42.88" cy="17.54" rx="3.1" ry="1.35" fill="#8B6A2E" style="--rot:-7.4deg;animation-delay:100ms"/><ellipse class="seed" cx="38.94" cy="19.20" rx="3.1" ry="1.35" fill="#A67C3B" style="--rot:-9.8deg;animation-delay:117ms"/><ellipse class="seed" cx="35.20" cy="21.13" rx="3.1" ry="1.35" fill="#6B4F23" style="--rot:-20.5deg;animation-delay:133ms"/><ellipse class="seed" cx="31.61" cy="23.29" rx="3.1" ry="1.35" fill="#B98D47" style="--rot:-36.8deg;animation-delay:150ms"/><ellipse class="seed" cx="28.15" cy="25.68" rx="3.1" ry="1.35" fill="#7A5A28" style="--rot:-51.2deg;animation-delay:167ms"/><ellipse class="seed" cx="24.82" cy="28.37" rx="3.1" ry="1.35" fill="#94722F" style="--rot:-57.8deg;animation-delay:183ms"/><ellipse class="seed" cx="21.71" cy="31.44" rx="3.1" ry="1.35" fill="#8B6A2E" style="--rot:-57.4deg;animation-delay:200ms"/><ellipse class="seed" cx="18.95" cy="34.94" rx="3.1" ry="1.35" fill="#A67C3B" style="--rot:-56.4deg;animation-delay:217ms"/><ellipse class="seed" cx="16.73" cy="38.88" rx="3.1" ry="1.35" fill="#6B4F23" style="--rot:-61.9deg;animation-delay:233ms"/><ellipse class="seed" cx="15.19" cy="43.18" rx="3.1" ry="1.35" fill="#B98D47" style="--rot:-75.4deg;animation-delay:250ms"/><ellipse class="seed" cx="14.47" cy="47.70" rx="3.1" ry="1.35" fill="#7A5A28" style="--rot:-91.9deg;animation-delay:267ms"/><ellipse class="seed" cx="14.63" cy="52.29" rx="3.1" ry="1.35" fill="#94722F" style="--rot:-103.7deg;animation-delay:283ms"/><ellipse class="seed" cx="15.62" cy="56.74" rx="3.1" ry="1.35" fill="#8B6A2E" style="--rot:-107.2deg;animation-delay:300ms"/><ellipse class="seed" cx="17.34" cy="60.92" rx="3.1" ry="1.35" fill="#A67C3B" style="--rot:-105.6deg;animation-delay:317ms"/><ellipse class="seed" cx="19.62" cy="64.74" rx="3.1" ry="1.35" fill="#6B4F23" style="--rot:-106.4deg;animation-delay:333ms"/><ellipse class="seed" cx="22.29" cy="68.18" rx="3.1" ry="1.35" fill="#B98D47" style="--rot:-115.2deg;animation-delay:350ms"/><ellipse class="seed" cx="25.23" cy="71.28" rx="3.1" ry="1.35" fill="#7A5A28" style="--rot:-130.7deg;animation-delay:367ms"/><ellipse class="seed" cx="28.33" cy="74.12" rx="3.1" ry="1.35" fill="#94722F" style="--rot:-146.2deg;animation-delay:383ms"/><ellipse class="seed" cx="31.60" cy="76.73" rx="3.1" ry="1.35" fill="#8B6A2E" style="--rot:-154.9deg;animation-delay:400ms"/><ellipse class="seed" cx="35.05" cy="79.16" rx="3.1" ry="1.35" fill="#A67C3B" style="--rot:-155.7deg;animation-delay:417ms"/><ellipse class="seed" cx="38.75" cy="81.33" rx="3.1" ry="1.35" fill="#6B4F23" style="--rot:-154.1deg;animation-delay:433ms"/><ellipse class="seed" cx="42.73" cy="83.16" rx="3.1" ry="1.35" fill="#B98D47" style="--rot:-157.6deg;animation-delay:450ms"/><ellipse class="seed" cx="47.00" cy="84.48" rx="3.1" ry="1.35" fill="#7A5A28" style="--rot:-169.6deg;animation-delay:467ms"/><ellipse class="seed" cx="51.49" cy="85.13" rx="3.1" ry="1.35" fill="#94722F" style="--rot:-186.0deg;animation-delay:483ms"/><ellipse class="seed" cx="56.06" cy="84.99" rx="3.1" ry="1.35" fill="#8B6A2E" style="--rot:-199.5deg;animation-delay:500ms"/><ellipse class="seed" cx="60.53" cy="84.00" rx="3.1" ry="1.35" fill="#A67C3B" style="--rot:-204.9deg;animation-delay:517ms"/><ellipse class="seed" cx="64.74" cy="82.18" rx="3.1" ry="1.35" fill="#6B4F23" style="--rot:-203.8deg;animation-delay:533ms"/><ellipse class="seed" cx="68.52" cy="79.64" rx="3.1" ry="1.35" fill="#B98D47" style="--rot:-203.4deg;animation-delay:550ms"/><ellipse class="seed" cx="63.46" cy="28.46" rx="3.1" ry="1.35" fill="#7A5A28" style="--rot:22.0deg;animation-delay:0ms"/><ellipse class="seed" cx="60.22" cy="26.60" rx="3.1" ry="1.35" fill="#94722F" style="--rot:17.7deg;animation-delay:19ms"/><ellipse class="seed" cx="56.79" cy="24.98" rx="3.1" ry="1.35" fill="#8B6A2E" style="--rot:18.3deg;animation-delay:38ms"/><ellipse class="seed" cx="53.12" cy="23.68" rx="3.1" ry="1.35" fill="#A67C3B" style="--rot:16.3deg;animation-delay:57ms"/><ellipse class="seed" cx="49.22" cy="22.83" rx="3.1" ry="1.35" fill="#6B4F23" style="--rot:6.3deg;animation-delay:76ms"/><ellipse class="seed" cx="45.14" cy="22.61" rx="3.1" ry="1.35" fill="#B98D47" style="--rot:-10.3deg;animation-delay:95ms"/><ellipse class="seed" cx="41.03" cy="23.15" rx="3.1" ry="1.35" fill="#7A5A28" style="--rot:-26.8deg;animation-delay:114ms"/><ellipse class="seed" cx="37.07" cy="24.52" rx="3.1" ry="1.35" fill="#94722F" style="--rot:-36.3deg;animation-delay:133ms"/><ellipse class="seed" cx="33.49" cy="26.70" rx="3.1" ry="1.35" fill="#8B6A2E" style="--rot:-38.0deg;animation-delay:152ms"/><ellipse class="seed" cx="30.46" cy="29.57" rx="3.1" ry="1.35" fill="#A67C3B" style="--rot:-37.4deg;animation-delay:171ms"/><ellipse class="seed" cx="28.09" cy="32.97" rx="3.1" ry="1.35" fill="#6B4F23" style="--rot:-42.2deg;animation-delay:190ms"/><ellipse class="seed" cx="26.40" cy="36.67" rx="3.1" ry="1.35" fill="#B98D47" style="--rot:-55.2deg;animation-delay:209ms"/><ellipse class="seed" cx="25.32" cy="40.51" rx="3.1" ry="1.35" fill="#7A5A28" style="--rot:-72.8deg;animation-delay:228ms"/><ellipse class="seed" cx="24.75" cy="44.35" rx="3.1" ry="1.35" fill="#94722F" style="--rot:-87.1deg;animation-delay:247ms"/><ellipse class="seed" cx="24.56" cy="48.13" rx="3.1" ry="1.35" fill="#8B6A2E" style="--rot:-93.3deg;animation-delay:266ms"/><ellipse class="seed" cx="24.67" cy="51.86" rx="3.1" ry="1.35" fill="#A67C3B" style="--rot:-93.2deg;animation-delay:284ms"/><ellipse class="seed" cx="25.04" cy="55.59" rx="3.1" ry="1.35" fill="#6B4F23" style="--rot:-94.0deg;animation-delay:303ms"/><ellipse class="seed" cx="25.72" cy="59.34" rx="3.1" ry="1.35" fill="#B98D47" style="--rot:-101.9deg;animation-delay:322ms"/><ellipse class="seed" cx="26.83" cy="63.08" rx="3.1" ry="1.35" fill="#7A5A28" style="--rot:-117.5deg;animation-delay:341ms"/><ellipse class="seed" cx="28.46" cy="66.75" rx="3.1" ry="1.35" fill="#94722F" style="--rot:-134.7deg;animation-delay:360ms"/><ellipse class="seed" cx="30.71" cy="70.17" rx="3.1" ry="1.35" fill="#8B6A2E" style="--rot:-146.2deg;animation-delay:379ms"/><ellipse class="seed" cx="33.60" cy="73.15" rx="3.1" ry="1.35" fill="#A67C3B" style="--rot:-149.4deg;animation-delay:398ms"/><ellipse class="seed" cx="37.07" cy="75.50" rx="3.1" ry="1.35" fill="#6B4F23" style="--rot:-148.6deg;animation-delay:417ms"/><ellipse class="seed" cx="40.96" cy="77.06" rx="3.1" ry="1.35" fill="#B98D47" style="--rot:-151.6deg;animation-delay:436ms"/><ellipse class="seed" cx="45.07" cy="77.76" rx="3.1" ry="1.35" fill="#7A5A28" style="--rot:-162.9deg;animation-delay:455ms"/><ellipse class="seed" cx="49.20" cy="77.64" rx="3.1" ry="1.35" fill="#94722F" style="--rot:-180.0deg;animation-delay:474ms"/><ellipse class="seed" cx="53.18" cy="76.81" rx="3.1" ry="1.35" fill="#8B6A2E" style="--rot:-195.8deg;animation-delay:493ms"/><ellipse class="seed" cx="56.89" cy="75.42" rx="3.1" ry="1.35" fill="#A67C3B" style="--rot:-203.9deg;animation-delay:512ms"/><ellipse class="seed" cx="60.32" cy="73.64" rx="3.1" ry="1.35" fill="#6B4F23" style="--rot:-204.8deg;animation-delay:531ms"/><ellipse class="seed" cx="63.50" cy="71.60" rx="3.1" ry="1.35" fill="#B98D47" style="--rot:-204.6deg;animation-delay:550ms"/></svg>Cumin</p>
+      <p class="auth-sub" id="authSubtitle">One place for everyone's best work.</p>
+
+      <div id="authError" class="error-msg hidden"></div>
+      <div id="authSuccess" class="success-msg hidden"></div>
+
+      <div id="loginForm">
+        <div class="field">
+          <label>Work Email</label>
+          <input type="email" id="loginEmail" placeholder="you@company.com">
+        </div>
+        <div class="field">
+          <label>Password</label>
+          <div class="password-wrap">
+            <input type="password" id="loginPassword" placeholder="6-digit password">
+            <button type="button" class="password-eye" onclick="togglePasswordVisibility('loginPassword', this)" aria-label="Show password">👁</button>
+          </div>
+        </div>
+        <button class="btn btn-warm btn-block" onclick="doLogin()">Log in</button>
+        <div style="text-align:center;margin-top:16px;">
+          <button class="link-btn" onclick="showForgot()">Forgot password?</button>
+        </div>
+      </div>
+
+      <div id="forgotForm" class="hidden">
+        <div class="field">
+          <label>Work Email</label>
+          <input type="email" id="forgotEmail" placeholder="you@company.com">
+        </div>
+        <button class="btn btn-warm btn-block" onclick="doForgotPassword()">Send new password</button>
+        <div style="text-align:center;margin-top:16px;">
+          <button class="link-btn" onclick="showLogin()">Back to login</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============================================================
+       MAIN APP
+       ============================================================ -->
+  <div id="mainApp" class="hidden">
+    <div class="topbar">
+      <div class="wordmark"><svg class="cumin-mark" viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg"><ellipse class="seed" cx="68.77" cy="19.96" rx="3.1" ry="1.35" fill="#8B6A2E" style="--rot:40.9deg;animation-delay:0ms"/><ellipse class="seed" cx="64.82" cy="17.63" rx="3.1" ry="1.35" fill="#A67C3B" style="--rot:33.5deg;animation-delay:17ms"/><ellipse class="seed" cx="60.50" cy="16.10" rx="3.1" ry="1.35" fill="#6B4F23" style="--rot:18.6deg;animation-delay:33ms"/><ellipse class="seed" cx="55.99" cy="15.40" rx="3.1" ry="1.35" fill="#B98D47" style="--rot:2.6deg;animation-delay:50ms"/><ellipse class="seed" cx="51.46" cy="15.49" rx="3.1" ry="1.35" fill="#7A5A28" style="--rot:-7.4deg;animation-delay:67ms"/><ellipse class="seed" cx="47.07" cy="16.25" rx="3.1" ry="1.35" fill="#94722F" style="--rot:-9.2deg;animation-delay:83ms"/><ellipse class="seed" cx="42.88" cy="17.54" rx="3.1" ry="1.35" fill="#8B6A2E" style="--rot:-7.4deg;animation-delay:100ms"/><ellipse class="seed" cx="38.94" cy="19.20" rx="3.1" ry="1.35" fill="#A67C3B" style="--rot:-9.8deg;animation-delay:117ms"/><ellipse class="seed" cx="35.20" cy="21.13" rx="3.1" ry="1.35" fill="#6B4F23" style="--rot:-20.5deg;animation-delay:133ms"/><ellipse class="seed" cx="31.61" cy="23.29" rx="3.1" ry="1.35" fill="#B98D47" style="--rot:-36.8deg;animation-delay:150ms"/><ellipse class="seed" cx="28.15" cy="25.68" rx="3.1" ry="1.35" fill="#7A5A28" style="--rot:-51.2deg;animation-delay:167ms"/><ellipse class="seed" cx="24.82" cy="28.37" rx="3.1" ry="1.35" fill="#94722F" style="--rot:-57.8deg;animation-delay:183ms"/><ellipse class="seed" cx="21.71" cy="31.44" rx="3.1" ry="1.35" fill="#8B6A2E" style="--rot:-57.4deg;animation-delay:200ms"/><ellipse class="seed" cx="18.95" cy="34.94" rx="3.1" ry="1.35" fill="#A67C3B" style="--rot:-56.4deg;animation-delay:217ms"/><ellipse class="seed" cx="16.73" cy="38.88" rx="3.1" ry="1.35" fill="#6B4F23" style="--rot:-61.9deg;animation-delay:233ms"/><ellipse class="seed" cx="15.19" cy="43.18" rx="3.1" ry="1.35" fill="#B98D47" style="--rot:-75.4deg;animation-delay:250ms"/><ellipse class="seed" cx="14.47" cy="47.70" rx="3.1" ry="1.35" fill="#7A5A28" style="--rot:-91.9deg;animation-delay:267ms"/><ellipse class="seed" cx="14.63" cy="52.29" rx="3.1" ry="1.35" fill="#94722F" style="--rot:-103.7deg;animation-delay:283ms"/><ellipse class="seed" cx="15.62" cy="56.74" rx="3.1" ry="1.35" fill="#8B6A2E" style="--rot:-107.2deg;animation-delay:300ms"/><ellipse class="seed" cx="17.34" cy="60.92" rx="3.1" ry="1.35" fill="#A67C3B" style="--rot:-105.6deg;animation-delay:317ms"/><ellipse class="seed" cx="19.62" cy="64.74" rx="3.1" ry="1.35" fill="#6B4F23" style="--rot:-106.4deg;animation-delay:333ms"/><ellipse class="seed" cx="22.29" cy="68.18" rx="3.1" ry="1.35" fill="#B98D47" style="--rot:-115.2deg;animation-delay:350ms"/><ellipse class="seed" cx="25.23" cy="71.28" rx="3.1" ry="1.35" fill="#7A5A28" style="--rot:-130.7deg;animation-delay:367ms"/><ellipse class="seed" cx="28.33" cy="74.12" rx="3.1" ry="1.35" fill="#94722F" style="--rot:-146.2deg;animation-delay:383ms"/><ellipse class="seed" cx="31.60" cy="76.73" rx="3.1" ry="1.35" fill="#8B6A2E" style="--rot:-154.9deg;animation-delay:400ms"/><ellipse class="seed" cx="35.05" cy="79.16" rx="3.1" ry="1.35" fill="#A67C3B" style="--rot:-155.7deg;animation-delay:417ms"/><ellipse class="seed" cx="38.75" cy="81.33" rx="3.1" ry="1.35" fill="#6B4F23" style="--rot:-154.1deg;animation-delay:433ms"/><ellipse class="seed" cx="42.73" cy="83.16" rx="3.1" ry="1.35" fill="#B98D47" style="--rot:-157.6deg;animation-delay:450ms"/><ellipse class="seed" cx="47.00" cy="84.48" rx="3.1" ry="1.35" fill="#7A5A28" style="--rot:-169.6deg;animation-delay:467ms"/><ellipse class="seed" cx="51.49" cy="85.13" rx="3.1" ry="1.35" fill="#94722F" style="--rot:-186.0deg;animation-delay:483ms"/><ellipse class="seed" cx="56.06" cy="84.99" rx="3.1" ry="1.35" fill="#8B6A2E" style="--rot:-199.5deg;animation-delay:500ms"/><ellipse class="seed" cx="60.53" cy="84.00" rx="3.1" ry="1.35" fill="#A67C3B" style="--rot:-204.9deg;animation-delay:517ms"/><ellipse class="seed" cx="64.74" cy="82.18" rx="3.1" ry="1.35" fill="#6B4F23" style="--rot:-203.8deg;animation-delay:533ms"/><ellipse class="seed" cx="68.52" cy="79.64" rx="3.1" ry="1.35" fill="#B98D47" style="--rot:-203.4deg;animation-delay:550ms"/><ellipse class="seed" cx="63.46" cy="28.46" rx="3.1" ry="1.35" fill="#7A5A28" style="--rot:22.0deg;animation-delay:0ms"/><ellipse class="seed" cx="60.22" cy="26.60" rx="3.1" ry="1.35" fill="#94722F" style="--rot:17.7deg;animation-delay:19ms"/><ellipse class="seed" cx="56.79" cy="24.98" rx="3.1" ry="1.35" fill="#8B6A2E" style="--rot:18.3deg;animation-delay:38ms"/><ellipse class="seed" cx="53.12" cy="23.68" rx="3.1" ry="1.35" fill="#A67C3B" style="--rot:16.3deg;animation-delay:57ms"/><ellipse class="seed" cx="49.22" cy="22.83" rx="3.1" ry="1.35" fill="#6B4F23" style="--rot:6.3deg;animation-delay:76ms"/><ellipse class="seed" cx="45.14" cy="22.61" rx="3.1" ry="1.35" fill="#B98D47" style="--rot:-10.3deg;animation-delay:95ms"/><ellipse class="seed" cx="41.03" cy="23.15" rx="3.1" ry="1.35" fill="#7A5A28" style="--rot:-26.8deg;animation-delay:114ms"/><ellipse class="seed" cx="37.07" cy="24.52" rx="3.1" ry="1.35" fill="#94722F" style="--rot:-36.3deg;animation-delay:133ms"/><ellipse class="seed" cx="33.49" cy="26.70" rx="3.1" ry="1.35" fill="#8B6A2E" style="--rot:-38.0deg;animation-delay:152ms"/><ellipse class="seed" cx="30.46" cy="29.57" rx="3.1" ry="1.35" fill="#A67C3B" style="--rot:-37.4deg;animation-delay:171ms"/><ellipse class="seed" cx="28.09" cy="32.97" rx="3.1" ry="1.35" fill="#6B4F23" style="--rot:-42.2deg;animation-delay:190ms"/><ellipse class="seed" cx="26.40" cy="36.67" rx="3.1" ry="1.35" fill="#B98D47" style="--rot:-55.2deg;animation-delay:209ms"/><ellipse class="seed" cx="25.32" cy="40.51" rx="3.1" ry="1.35" fill="#7A5A28" style="--rot:-72.8deg;animation-delay:228ms"/><ellipse class="seed" cx="24.75" cy="44.35" rx="3.1" ry="1.35" fill="#94722F" style="--rot:-87.1deg;animation-delay:247ms"/><ellipse class="seed" cx="24.56" cy="48.13" rx="3.1" ry="1.35" fill="#8B6A2E" style="--rot:-93.3deg;animation-delay:266ms"/><ellipse class="seed" cx="24.67" cy="51.86" rx="3.1" ry="1.35" fill="#A67C3B" style="--rot:-93.2deg;animation-delay:284ms"/><ellipse class="seed" cx="25.04" cy="55.59" rx="3.1" ry="1.35" fill="#6B4F23" style="--rot:-94.0deg;animation-delay:303ms"/><ellipse class="seed" cx="25.72" cy="59.34" rx="3.1" ry="1.35" fill="#B98D47" style="--rot:-101.9deg;animation-delay:322ms"/><ellipse class="seed" cx="26.83" cy="63.08" rx="3.1" ry="1.35" fill="#7A5A28" style="--rot:-117.5deg;animation-delay:341ms"/><ellipse class="seed" cx="28.46" cy="66.75" rx="3.1" ry="1.35" fill="#94722F" style="--rot:-134.7deg;animation-delay:360ms"/><ellipse class="seed" cx="30.71" cy="70.17" rx="3.1" ry="1.35" fill="#8B6A2E" style="--rot:-146.2deg;animation-delay:379ms"/><ellipse class="seed" cx="33.60" cy="73.15" rx="3.1" ry="1.35" fill="#A67C3B" style="--rot:-149.4deg;animation-delay:398ms"/><ellipse class="seed" cx="37.07" cy="75.50" rx="3.1" ry="1.35" fill="#6B4F23" style="--rot:-148.6deg;animation-delay:417ms"/><ellipse class="seed" cx="40.96" cy="77.06" rx="3.1" ry="1.35" fill="#B98D47" style="--rot:-151.6deg;animation-delay:436ms"/><ellipse class="seed" cx="45.07" cy="77.76" rx="3.1" ry="1.35" fill="#7A5A28" style="--rot:-162.9deg;animation-delay:455ms"/><ellipse class="seed" cx="49.20" cy="77.64" rx="3.1" ry="1.35" fill="#94722F" style="--rot:-180.0deg;animation-delay:474ms"/><ellipse class="seed" cx="53.18" cy="76.81" rx="3.1" ry="1.35" fill="#8B6A2E" style="--rot:-195.8deg;animation-delay:493ms"/><ellipse class="seed" cx="56.89" cy="75.42" rx="3.1" ry="1.35" fill="#A67C3B" style="--rot:-203.9deg;animation-delay:512ms"/><ellipse class="seed" cx="60.32" cy="73.64" rx="3.1" ry="1.35" fill="#6B4F23" style="--rot:-204.8deg;animation-delay:531ms"/><ellipse class="seed" cx="63.50" cy="71.60" rx="3.1" ry="1.35" fill="#B98D47" style="--rot:-204.6deg;animation-delay:550ms"/></svg>Cumin</div>
+      <div class="topbar-spacer"></div>
+
+      <div class="search-wrap">
+        <span class="search-icon">🔍</span>
+        <input class="search-input" id="searchInput" placeholder="Search projects, people, ideas..." oninput="onSearchInput()">
+        <div id="searchResults" class="search-results hidden"></div>
+      </div>
+
+      <div style="position:relative;">
+        <button class="icon-btn" onclick="toggleNotifDropdown()">🔔<span id="notifBadge" class="badge hidden">0</span></button>
+        <div id="notifDropdown" class="notif-dropdown hidden"></div>
+      </div>
+
+      <div class="user-menu-wrap">
+        <button class="icon-btn" style="border-radius:50%;padding:0;overflow:hidden;" onclick="toggleUserMenu()">
+          <span id="topbarAvatar">🙂</span>
+        </button>
+        <div id="userMenu" class="user-menu hidden">
+          <button onclick="goHome()">🏠 Home</button>
+          <button id="teamMgmtMenuBtn" class="hidden" onclick="openTeamManagement()">👑 Team Management</button>
+          <button onclick="showResetOwnPassword()">🔑 Reset my password</button>
+          <button onclick="doLogout()">🚪 Log out</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="container" id="mainContainer">
+      <!-- views render here -->
+    </div>
+  </div>
+</div>
+
+<div id="toast" class="save-toast"></div>
+
+<script>
+/* ============================================================
+   CONFIG
+   ============================================================ */
+const API_URL = "https://script.google.com/macros/s/AKfycbxl7YDp_XENfzaSIVFnKCKElx_czcqS9EAQJ4UBzN-D3Mmh0-H0gpHrpvmvRSteCQ/exec";
+
+const PROJECT_STATUSES = ['Open', 'In Progress', 'On Hold', 'Completed'];
+const IDEA_TYPES = ['Visibility', 'Cost', 'Process Improvement', 'CX'];
+const PRIORITIES = ['P0', 'P1', 'P2'];
+
+const AVATAR_COLORS = {
+  '🦊':'#FF8A4C','🐼':'#5B6B79','🐸':'#2FAE6B','🐯':'#FFA53E','🐨':'#8E9AAF',
+  '🐙':'#8E5CD9','🦄':'#F06BB0','🐻':'#8B5E3C','🐱':'#FF7A6B','🐰':'#FF9AC8',
+  '🦋':'#5A8DEE','🐥':'#FFD23F'
 };
 
-var HEADERS = {
-  Users: ['User ID', 'Name', 'Work Email', 'Avatar', 'Role', 'Status',
-          'Password Hash', 'Password Salt', 'Created At', 'Last Login'],
-  Projects: ['Project ID', 'Owner User ID', 'Project Name', 'Description', 'Status',
-             'ETA', 'Actual Completion Date', 'Impact', 'Priority', 'Dependency',
-             'Stakeholders', 'Created At', 'Updated At'],
-  Ideas: ['Idea ID', 'Owner User ID', 'Type', 'Description', 'Expected Impact',
-          'Created At', 'Updated At'],
-  AdHoc: ['AdHoc ID', 'Owner User ID', 'Task', 'Time Spent', 'Description',
-          'Source', 'Date'],
-  Activity_Log: ['Activity ID', 'User ID', 'Module', 'Record ID', 'Action',
-                 'Field Changed', 'Old Value', 'New Value', 'Timestamp', 'Changed By'],
-  Settings: ['Setting', 'Value'],
-  Sessions: ['Token', 'User ID', 'Created At', 'Expires At'],
-  DailySnapshots: ['Snapshot Date', 'Project ID', 'Owner User ID', 'Status',
-                    'Display Status', 'Zone', 'Days Remaining'],
-  DailyWorkLog: ['Log ID', 'Project ID', 'Owner User ID', 'Date', 'Description', 'Created At']
+/* ============================================================
+   STATE
+   ============================================================ */
+let state = {
+  token: localStorage.getItem('townhall_token') || null,
+  user: JSON.parse(localStorage.getItem('townhall_user') || 'null'),
+  homeFilter: 'All',
+  currentWorkspaceUserId: null,
+  currentWorkspaceTab: 'projects',
+  workspaceData: null,
+  searchDebounce: null
 };
 
-var PROJECT_STATUSES = ['Open', 'In Progress', 'On Hold', 'Completed'];
-var IDEA_TYPES = ['Visibility', 'Cost', 'Process Improvement', 'CX'];
-var PRIORITIES = ['P0', 'P1', 'P2'];
-var SESSION_LIFETIME_HOURS = 12;
-
-var AVATARS = ['🦊', '🐼', '🐸', '🐯', '🐨', '🐙', '🦄', '🐻', '🐱', '🐰', '🦋', '🐥'];
-
-// ============================================================================
-// ENTRY POINTS
-// ============================================================================
-
-function doGet(e) {
-  return jsonOut({ ok: true, data: { message: 'Huddle API is running.' } });
-}
-
-function doPost(e) {
-  var body;
+/* ============================================================
+   API HELPER — text/plain avoids CORS preflight on Apps Script
+   ============================================================ */
+async function apiCall(action, payload) {
+  payload = payload || {};
+  payload.action = action;
+  if (state.token) payload.token = state.token;
   try {
-    body = JSON.parse(e.postData.contents);
-  } catch (err) {
-    return jsonOut({ ok: false, error: 'Invalid request body.' });
-  }
-
-  var action = body.action;
-  if (!action) return jsonOut({ ok: false, error: 'Missing action.' });
-
-  try {
-    switch (action) {
-      // ---- Auth ----
-      case 'login': return jsonOut(handleLogin(body));
-      case 'logout': return jsonOut(handleLogout(body));
-      case 'forgotPassword': return jsonOut(handleForgotPassword(body));
-
-      // ---- Home / dashboard reads ----
-      case 'getHomeData': return jsonOut(withAuth(body, handleGetHomeData));
-      case 'getHomeBundle': return jsonOut(withAuth(body, handleGetHomeBundle));
-      case 'getUserWorkspace': return jsonOut(withAuth(body, handleGetUserWorkspace));
-      case 'getDailySummary': return jsonOut(withAuth(body, handleGetDailySummary));
-      case 'getNotifications': return jsonOut(withAuth(body, handleGetNotifications));
-      case 'search': return jsonOut(withAuth(body, handleSearch));
-      case 'getActivityHistory': return jsonOut(withAuth(body, handleGetActivityHistory));
-      case 'logDailyWork': return jsonOut(withAuth(body, handleLogDailyWork));
-      case 'deleteDailyWork': return jsonOut(withAuth(body, handleDeleteDailyWork));
-      case 'getWeeklySummary': return jsonOut(withAuth(body, handleGetWeeklySummary));
-
-      // ---- Projects ----
-      case 'createProject': return jsonOut(withAuth(body, handleCreateProject));
-      case 'updateProject': return jsonOut(withAuth(body, handleUpdateProject));
-
-      // ---- Ideas ----
-      case 'createIdea': return jsonOut(withAuth(body, handleCreateIdea));
-      case 'updateIdea': return jsonOut(withAuth(body, handleUpdateIdea));
-
-      // ---- AdHoc ----
-      case 'createAdhoc': return jsonOut(withAuth(body, handleCreateAdhoc));
-      case 'updateAdhoc': return jsonOut(withAuth(body, handleUpdateAdhoc));
-
-      // ---- Admin: user management ----
-      case 'addUser': return jsonOut(withAdmin(body, handleAddUser));
-      case 'updateUser': return jsonOut(withAdmin(body, handleUpdateUser));
-      case 'deactivateUser': return jsonOut(withAdmin(body, handleDeactivateUser));
-      case 'reactivateUser': return jsonOut(withAdmin(body, handleReactivateUser));
-      case 'adminResetPassword': return jsonOut(withAdmin(body, handleAdminResetPassword));
-      case 'getAllUsers': return jsonOut(withAdmin(body, handleGetAllUsers));
-
-      default: return jsonOut({ ok: false, error: 'Unknown action: ' + action });
-    }
-  } catch (err) {
-    return jsonOut({ ok: false, error: err.message });
-  }
-}
-
-function jsonOut(obj) {
-  return ContentService.createTextOutput(JSON.stringify(obj))
-    .setMimeType(ContentService.MimeType.JSON);
-}
-
-// ============================================================================
-// SETUP / MIGRATION
-// ============================================================================
-
-function setupSheets() {
-  var ss = SpreadsheetApp.getActiveSpreadsheet();
-  Object.keys(HEADERS).forEach(function (sheetName) {
-    var sheet = ss.getSheetByName(sheetName);
-    var expected = HEADERS[sheetName];
-    if (!sheet) {
-      sheet = ss.insertSheet(sheetName);
-      sheet.getRange(1, 1, 1, expected.length).setValues([expected]);
-      sheet.setFrozenRows(1);
-      return;
-    }
-    // Add any missing columns at the end, without touching existing data.
-    var lastCol = Math.max(sheet.getLastColumn(), 1);
-    var existing = sheet.getRange(1, 1, 1, lastCol).getValues()[0];
-    expected.forEach(function (col) {
-      if (existing.indexOf(col) === -1) {
-        sheet.getRange(1, sheet.getLastColumn() + 1).setValue(col);
-      }
+    const res = await fetch(API_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+      body: JSON.stringify(payload)
     });
-    sheet.setFrozenRows(1);
-  });
-
-  // Mark the admin user based on Settings!Admin Email
-  var adminEmail = getSetting('Admin Email');
-  if (adminEmail) {
-    var users = getAllRows(SHEETS.USERS);
-    users.forEach(function (u) {
-      if (String(u['Work Email']).toLowerCase() === String(adminEmail).toLowerCase()) {
-        setCellByMatch(SHEETS.USERS, 'User ID', u['User ID'], 'Role', 'Admin');
-      } else if (!u['Role']) {
-        setCellByMatch(SHEETS.USERS, 'User ID', u['User ID'], 'Role', 'User');
-      }
-    });
+    return await res.json();
+  } catch (err) {
+    return { ok: false, error: 'Network error — check your connection or the API URL.' };
   }
-
-  Logger.log('Setup complete.');
 }
 
-function initializeMissingPasswords() {
-  var users = getAllRows(SHEETS.USERS);
-  users.forEach(function (u) {
-    if (!u['Password Hash']) {
-      var password = generateSixDigitPassword();
-      setUserPassword(u['User ID'], password);
-      sendWelcomeEmail(u, password);
-    }
-  });
-  Logger.log('Passwords initialized for users missing one.');
+function showToast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  setTimeout(() => t.classList.remove('show'), 1800);
 }
 
-/**
- * Run this ONCE, manually, after fixing Settings!Application URL, if your
- * first round of welcome emails went out without the dashboard link.
- * Regenerates + emails a NEW password to every Active user (their old
- * password stops working). Safe to run any time you want to force-resend
- * everyone's credentials with the current email template/link.
- */
-function resendAllCredentials() {
-  var users = getAllRows(SHEETS.USERS).filter(function (u) { return u['Status'] === 'Active'; });
-  users.forEach(function (u) {
-    var password = generateSixDigitPassword();
-    setUserPassword(u['User ID'], password);
-    sendWelcomeEmail(u, password);
-  });
-  Logger.log('Resent credentials to ' + users.length + ' active users.');
+/* ============================================================
+   AUTH
+   ============================================================ */
+function showLogin() {
+  document.getElementById('loginForm').classList.remove('hidden');
+  document.getElementById('forgotForm').classList.add('hidden');
+  document.getElementById('authSubtitle').textContent = "One place for everyone's best work.";
+  hideAuthMsgs();
+}
+function showForgot() {
+  document.getElementById('loginForm').classList.add('hidden');
+  document.getElementById('forgotForm').classList.remove('hidden');
+  document.getElementById('authSubtitle').textContent = "We'll email you a new password.";
+  hideAuthMsgs();
+}
+function hideAuthMsgs() {
+  document.getElementById('authError').classList.add('hidden');
+  document.getElementById('authSuccess').classList.add('hidden');
+}
+function authError(msg) {
+  const el = document.getElementById('authError');
+  el.textContent = msg; el.classList.remove('hidden');
+  document.getElementById('authSuccess').classList.add('hidden');
+}
+function authSuccess(msg) {
+  const el = document.getElementById('authSuccess');
+  el.textContent = msg; el.classList.remove('hidden');
+  document.getElementById('authError').classList.add('hidden');
 }
 
-function setupDailyTrigger() {
-  // Remove existing triggers for this function first to avoid duplicates.
-  ScriptApp.getProjectTriggers().forEach(function (t) {
-    if (t.getHandlerFunction() === 'createDailySnapshot') ScriptApp.deleteTrigger(t);
-  });
-  ScriptApp.newTrigger('createDailySnapshot')
-    .timeBased()
-    .everyDays(1)
-    .atHour(23)
-    .create();
-  Logger.log('Daily snapshot trigger installed (runs ~11pm).');
+async function doLogin() {
+  const email = document.getElementById('loginEmail').value.trim();
+  const password = document.getElementById('loginPassword').value.trim();
+  if (!email || !password) return authError('Enter your email and password.');
+  const res = await apiCall('login', { email, password });
+  if (!res.ok) return authError(res.error);
+  state.token = res.data.token;
+  state.user = res.data.user;
+  localStorage.setItem('townhall_token', state.token);
+  localStorage.setItem('townhall_user', JSON.stringify(state.user));
+  enterApp();
 }
 
-// ============================================================================
-// SHEET HELPERS
-// ============================================================================
-
-// ============================================================================
-// CACHE LAYER — speeds up repeated reads within a short window
-// ============================================================================
-
-var CACHE = CacheService.getScriptCache();
-var CACHE_TTL_SECONDS = 30;
-
-function invalidateCache(sheetName) {
-  try { CACHE.remove('rows_' + sheetName); } catch (e) { /* ignore */ }
+async function doForgotPassword() {
+  const email = document.getElementById('forgotEmail').value.trim();
+  if (!email) return authError('Enter your email.');
+  const res = await apiCall('forgotPassword', { email });
+  if (!res.ok) return authError(res.error);
+  authSuccess(res.data.message);
 }
 
-function getSheet(name) {
-  var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(name);
-  if (!sheet) throw new Error('Sheet not found: ' + name);
-  return sheet;
+async function doLogout() {
+  await apiCall('logout', {});
+  localStorage.removeItem('townhall_token');
+  localStorage.removeItem('townhall_user');
+  state = { ...state, token: null, user: null };
+  document.getElementById('mainApp').classList.add('hidden');
+  document.getElementById('authScreen').classList.remove('hidden');
+  showLogin();
 }
 
-function getAllRows(sheetName) {
-  var cacheKey = 'rows_' + sheetName;
-  try {
-    var cached = CACHE.get(cacheKey);
-    if (cached) return JSON.parse(cached);
-  } catch (e) { /* cache miss or unavailable, fall through */ }
-
-  var rows = getAllRowsRaw(sheetName);
-  try { CACHE.put(cacheKey, JSON.stringify(rows), CACHE_TTL_SECONDS); } catch (e) { /* row set too large for cache, skip */ }
-  return rows;
-}
-
-function getAllRowsRaw(sheetName) {
-  var sheet = getSheet(sheetName);
-  var values = sheet.getDataRange().getValues();
-  if (values.length < 2) return [];
-  var headers = values[0];
-  var rows = [];
-  for (var i = 1; i < values.length; i++) {
-    var row = {};
-    for (var j = 0; j < headers.length; j++) {
-      row[headers[j]] = values[i][j];
-    }
-    row.__row = i + 1; // 1-indexed sheet row number, for updates
-    rows.push(row);
-  }
-  return rows;
-}
-
-function appendRowObject(sheetName, obj) {
-  var sheet = getSheet(sheetName);
-  var headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
-  var row = headers.map(function (h) { return obj.hasOwnProperty(h) ? obj[h] : ''; });
-  sheet.appendRow(row);
-  invalidateCache(sheetName);
-  return row;
-}
-
-function updateRowByIdField(sheetName, idField, idValue, updates) {
-  var sheet = getSheet(sheetName);
-  var values = sheet.getDataRange().getValues();
-  var headers = values[0];
-  var idCol = headers.indexOf(idField);
-  if (idCol === -1) throw new Error('Field not found: ' + idField);
-
-  for (var i = 1; i < values.length; i++) {
-    if (String(values[i][idCol]) === String(idValue)) {
-      Object.keys(updates).forEach(function (field) {
-        var col = headers.indexOf(field);
-        if (col !== -1) sheet.getRange(i + 1, col + 1).setValue(updates[field]);
-      });
-      invalidateCache(sheetName);
-      return true;
-    }
-  }
-  return false;
-}
-
-function setCellByMatch(sheetName, idField, idValue, targetField, value) {
-  var updates = {};
-  updates[targetField] = value;
-  updateRowByIdField(sheetName, idField, idValue, updates);
-}
-
-function deleteRowByIdField(sheetName, idField, idValue) {
-  var sheet = getSheet(sheetName);
-  var values = sheet.getDataRange().getValues();
-  var headers = values[0];
-  var idCol = headers.indexOf(idField);
-  if (idCol === -1) throw new Error('Field not found: ' + idField);
-
-  for (var i = 1; i < values.length; i++) {
-    if (String(values[i][idCol]) === String(idValue)) {
-      sheet.deleteRow(i + 1);
-      invalidateCache(sheetName);
-      return true;
-    }
-  }
-  return false;
-}
-
-function findRowByField(sheetName, field, value) {
-  var rows = getAllRows(sheetName);
-  for (var i = 0; i < rows.length; i++) {
-    if (String(rows[i][field]) === String(value)) return rows[i];
-  }
-  return null;
-}
-
-function getSetting(key) {
-  var rows = getAllRows(SHEETS.SETTINGS);
-  for (var i = 0; i < rows.length; i++) {
-    if (rows[i]['Setting'] === key) return rows[i]['Value'];
-  }
-  return null;
-}
-
-function generateNextId(prefix, sheetName, idField) {
-  var rows = getAllRows(sheetName);
-  var max = 0;
-  rows.forEach(function (r) {
-    var id = String(r[idField] || '');
-    var match = id.match(/(\d+)$/);
-    if (match) max = Math.max(max, parseInt(match[1], 10));
-  });
-  var next = max + 1;
-  var padded = ('000' + next).slice(-3);
-  return prefix + padded;
-}
-
-// ============================================================================
-// AUTH
-// ============================================================================
-
-function generateSixDigitPassword() {
-  return String(Math.floor(100000 + Math.random() * 900000));
-}
-
-function generateToken() {
-  return Utilities.getUuid() + Utilities.getUuid();
-}
-
-function hashPassword(password, salt) {
-  var digest = Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, password + salt);
-  return digest.map(function (b) {
-    var v = (b < 0 ? b + 256 : b).toString(16);
-    return v.length === 1 ? '0' + v : v;
-  }).join('');
-}
-
-function setUserPassword(userId, plainPassword) {
-  var salt = Utilities.getUuid();
-  var hash = hashPassword(plainPassword, salt);
-  updateRowByIdField(SHEETS.USERS, 'User ID', userId, {
-    'Password Hash': hash,
-    'Password Salt': salt
+function showResetOwnPassword() {
+  toggleUserMenu();
+  if (!confirm('Send a new password to ' + state.user.email + '?')) return;
+  apiCall('forgotPassword', { email: state.user.email }).then(res => {
+    showToast(res.ok ? 'New password sent to your email.' : (res.error || 'Something went wrong.'));
   });
 }
 
-function verifyPassword(user, plainPassword) {
-  if (!user['Password Salt'] || !user['Password Hash']) return false;
-  var hash = hashPassword(plainPassword, user['Password Salt']);
-  return hash === user['Password Hash'];
-}
-
-function handleLogin(body) {
-  var email = String(body.email || '').trim().toLowerCase();
-  var password = String(body.password || '').trim();
-  if (!email || !password) return { ok: false, error: 'Email and password are required.' };
-
-  var user = findRowByField(SHEETS.USERS, 'Work Email', email);
-  // case-insensitive fallback
-  if (!user) {
-    var all = getAllRows(SHEETS.USERS);
-    user = all.filter(function (u) {
-      return String(u['Work Email']).toLowerCase() === email;
-    })[0];
+async function enterApp() {
+  document.getElementById('authScreen').classList.add('hidden');
+  document.getElementById('mainApp').classList.remove('hidden');
+  document.getElementById('topbarAvatar').textContent = state.user.avatar;
+  if (state.user.role === 'Admin') {
+    document.getElementById('teamMgmtMenuBtn').classList.remove('hidden');
   }
-  if (!user) return { ok: false, error: 'No account found for that email.' };
-  if (user['Status'] !== 'Active') return { ok: false, error: 'This account is inactive. Contact your admin.' };
-  if (!verifyPassword(user, password)) return { ok: false, error: 'Incorrect password.' };
 
-  var token = generateToken();
-  var now = new Date();
-  var expires = new Date(now.getTime() + SESSION_LIFETIME_HOURS * 60 * 60 * 1000);
-  appendRowObject(SHEETS.SESSIONS, {
-    'Token': token, 'User ID': user['User ID'],
-    'Created At': now, 'Expires At': expires
-  });
-  updateRowByIdField(SHEETS.USERS, 'User ID', user['User ID'], { 'Last Login': now });
+  state.currentWorkspaceUserId = null;
+  renderLoading();
+  const res = await apiCall('getHomeBundle', {});
+  if (!res.ok || !res.data.home) { renderError(res.error || 'Could not load homepage.'); return; }
+  homeDataCache = res.data.home;
 
-  return {
-    ok: true,
-    data: {
-      token: token,
-      user: publicUser(user)
-    }
-  };
-}
-
-function handleLogout(body) {
-  if (body.token) {
-    deleteSessionRow(body.token);
+  if (res.data.notifications) {
+    notifCache = res.data.notifications.alerts;
+    const badge = document.getElementById('notifBadge');
+    if (res.data.notifications.count > 0) { badge.textContent = res.data.notifications.count; badge.classList.remove('hidden'); }
+    else badge.classList.add('hidden');
+    showDefaulterPopupIfNeeded(res.data.notifications.alerts);
   }
-  return { ok: true, data: {} };
+
+  renderHome(res.data.home, res.data.summary);
 }
 
-function deleteSessionRow(token) {
-  var sheet = getSheet(SHEETS.SESSIONS);
-  var values = sheet.getDataRange().getValues();
-  for (var i = 1; i < values.length; i++) {
-    if (values[i][0] === token) {
-      sheet.deleteRow(i + 1);
-      invalidateCache(SHEETS.SESSIONS);
-      return;
-    }
+// Try auto-login from stored session
+if (state.token && state.user) {
+  enterApp();
+}
+
+/* ============================================================
+   TOP BAR: notifications, user menu, search
+   ============================================================ */
+function toggleUserMenu() {
+  document.getElementById('userMenu').classList.toggle('hidden');
+  document.getElementById('notifDropdown').classList.add('hidden');
+}
+
+let notifCache = [];
+async function toggleNotifDropdown() {
+  const el = document.getElementById('notifDropdown');
+  document.getElementById('userMenu').classList.add('hidden');
+  if (!el.classList.contains('hidden')) { el.classList.add('hidden'); return; }
+  el.classList.remove('hidden');
+  await refreshNotifications();
+  renderNotifDropdown();
+}
+
+async function refreshNotifications() {
+  const res = await apiCall('getNotifications', {});
+  if (res.ok) {
+    notifCache = res.data.alerts;
+    const badge = document.getElementById('notifBadge');
+    if (res.data.count > 0) { badge.textContent = res.data.count; badge.classList.remove('hidden'); }
+    else badge.classList.add('hidden');
   }
 }
 
-function handleForgotPassword(body) {
-  var email = String(body.email || '').trim().toLowerCase();
-  var user = getAllRows(SHEETS.USERS).filter(function (u) {
-    return String(u['Work Email']).toLowerCase() === email;
-  })[0];
-  // Always return ok:true regardless, so we don't leak which emails exist.
-  if (user && user['Status'] === 'Active') {
-    var password = generateSixDigitPassword();
-    setUserPassword(user['User ID'], password);
-    sendPasswordResetEmail(user, password);
-  }
-  return { ok: true, data: { message: 'If that email exists, a new password has been sent.' } };
-}
-
-/** Resolves the session token to a user row, throws if invalid/expired. */
-function requireSession(token) {
-  if (!token) throw new Error('Not authenticated.');
-  var session = findRowByField(SHEETS.SESSIONS, 'Token', token);
-  if (!session) throw new Error('Session expired. Please log in again.');
-  if (new Date(session['Expires At']).getTime() < Date.now()) {
-    deleteSessionRow(token);
-    throw new Error('Session expired. Please log in again.');
-  }
-  var user = findRowByField(SHEETS.USERS, 'User ID', session['User ID']);
-  if (!user || user['Status'] !== 'Active') throw new Error('Account not active.');
-  return user;
-}
-
-/** Wraps a handler: resolves `currentUser` from token, then calls handler(body, currentUser). */
-function withAuth(body, handler) {
-  var user = requireSession(body.token);
-  return handler(body, user);
-}
-
-/** Wraps a handler: requires the resolved user to be Admin. */
-function withAdmin(body, handler) {
-  var user = requireSession(body.token);
-  if (user['Role'] !== 'Admin') return { ok: false, error: 'Admin access required.' };
-  return handler(body, user);
-}
-
-function publicUser(user) {
-  return {
-    userId: user['User ID'],
-    name: user['Name'],
-    email: user['Work Email'],
-    avatar: user['Avatar'],
-    role: user['Role'],
-    status: user['Status']
-  };
-}
-
-// ============================================================================
-// EMAIL
-// ============================================================================
-
-function sendWelcomeEmail(user, password) {
-  var appName = getSetting('Application Name') || 'Huddle';
-  var appUrl = getSetting('Application URL') || '';
-  var subject = 'Welcome to ' + appName + ' 👋';
-  var body = 'Welcome to ' + appName + ' 👋\n\n' +
-    'Your account has been created.\n\n' +
-    'Email: ' + user['Work Email'] + '\n' +
-    'Temporary Password: ' + password + '\n\n' +
-    (appUrl ? ('Login here: ' + appUrl + '\n\n') : '') +
-    'Please log in and you can reset your password any time from the app.';
-  MailApp.sendEmail(user['Work Email'], subject, body);
-}
-
-function sendPasswordResetEmail(user, password) {
-  var appName = getSetting('Application Name') || 'Huddle';
-  var appUrl = getSetting('Application URL') || '';
-  var subject = appName + ' — Your password was reset';
-  var body = 'Your ' + appName + ' password has been reset.\n\n' +
-    'Email: ' + user['Work Email'] + '\n' +
-    'New Password: ' + password + '\n\n' +
-    (appUrl ? ('Login here: ' + appUrl + '\n\n') : '') +
-    'If you did not request this, contact your admin immediately.';
-  MailApp.sendEmail(user['Work Email'], subject, body);
-}
-
-// ============================================================================
-// STATUS / ETA CALCULATION
-// ============================================================================
-
-/**
- * Computes the live/derived status info for a project.
- * Zones split the time from Created At -> ETA into 3 equal parts:
- *   green  = more than 2/3 of the total time remains
- *   amber  = between 1/3 and 2/3 remains
- *   red    = less than 1/3 remains
- *   delayed (overrides everything) = past ETA and not Completed
- */
-function isSameDay(dateA, dateB) {
-  if (!dateA || !dateB) return false;
-  var tz = Session.getScriptTimeZone();
-  return Utilities.formatDate(new Date(dateA), tz, 'yyyy-MM-dd') === Utilities.formatDate(new Date(dateB), tz, 'yyyy-MM-dd');
-}
-
-function computeProjectStatusInfo(project) {
-  var status = project['Status'];
-  var createdAt = new Date(project['Created At']);
-  var eta = new Date(project['ETA']);
-  var now = new Date();
-
-  if (status === 'Completed') {
-    var result = { displayStatus: 'Completed', zone: 'green', daysRemaining: null, completionVariance: null };
-    var actual = project['Actual Completion Date'];
-    if (actual) {
-      var actualDate = new Date(actual);
-      var diffDays = Math.round((eta - actualDate) / (1000 * 60 * 60 * 24));
-      if (diffDays > 0) result.completionVariance = 'Completed ' + diffDays + ' day' + (diffDays === 1 ? '' : 's') + ' early';
-      else if (diffDays < 0) result.completionVariance = 'Completed ' + Math.abs(diffDays) + ' day' + (Math.abs(diffDays) === 1 ? '' : 's') + ' late';
-      else result.completionVariance = 'Completed on time';
-    }
-    return result;
-  }
-
-  var msPerDay = 1000 * 60 * 60 * 24;
-  var daysRemaining = Math.ceil((eta - now) / msPerDay);
-
-  if (now.getTime() > eta.getTime()) {
-    return { displayStatus: 'Delayed', zone: 'red', daysRemaining: daysRemaining, completionVariance: null };
-  }
-
-  var totalDuration = eta.getTime() - createdAt.getTime();
-  var remaining = eta.getTime() - now.getTime();
-  var zone;
-  if (totalDuration <= 0) {
-    zone = 'red';
+function renderNotifDropdown() {
+  const el = document.getElementById('notifDropdown');
+  const colorFor = { overdue: 'var(--red)', dueToday: 'var(--amber)', dueTomorrow: '#FFD23F' };
+  let html = '<div class="notif-header">Deadline Alerts</div>';
+  if (notifCache.length === 0) {
+    html += '<div class="notif-empty">✨ Nothing overdue. Clear skies.</div>';
   } else {
-    var fractionRemaining = remaining / totalDuration;
-    if (fractionRemaining > 2 / 3) zone = 'green';
-    else if (fractionRemaining > 1 / 3) zone = 'amber';
-    else zone = 'red';
-  }
-
-  return { displayStatus: status, zone: zone, daysRemaining: daysRemaining, completionVariance: null };
-}
-
-function enrichProject(project) {
-  var info = computeProjectStatusInfo(project);
-  return {
-    projectId: project['Project ID'],
-    ownerUserId: project['Owner User ID'],
-    projectName: project['Project Name'],
-    description: project['Description'],
-    status: project['Status'],
-    displayStatus: info.displayStatus,
-    zone: info.zone,
-    daysRemaining: info.daysRemaining,
-    completionVariance: info.completionVariance,
-    eta: project['ETA'],
-    actualCompletionDate: project['Actual Completion Date'],
-    impact: project['Impact'],
-    priority: project['Priority'],
-    dependency: project['Dependency'],
-    stakeholders: project['Stakeholders'],
-    createdAt: project['Created At'],
-    updatedAt: project['Updated At']
-  };
-}
-
-// ============================================================================
-// HOME / DASHBOARD DATA
-// ============================================================================
-
-function handleGetHomeData(body, currentUser) {
-  var users = getAllRows(SHEETS.USERS).filter(function (u) { return u['Status'] === 'Active'; });
-  var projects = getAllRows(SHEETS.PROJECTS);
-  var ideas = getAllRows(SHEETS.IDEAS);
-  var adhoc = getAllRows(SHEETS.ADHOC);
-
-  var today = new Date();
-  var todayStr = Utilities.formatDate(today, Session.getScriptTimeZone(), 'yyyy-MM-dd');
-
-  var teamCards = users.map(function (u) {
-    var myProjects = projects.filter(function (p) { return p['Owner User ID'] === u['User ID']; });
-    var enriched = myProjects.map(enrichProject);
-    var active = enriched.filter(function (p) { return p.displayStatus === 'In Progress' || p.displayStatus === 'Open'; }).length;
-    var ongoing = enriched.filter(function (p) { return p.displayStatus === 'On Hold' || p.displayStatus === 'Delayed'; }).length;
-    var completed = enriched.filter(function (p) { return p.displayStatus === 'Completed'; }).length;
-    return {
-      userId: u['User ID'], name: u['Name'], avatar: u['Avatar'],
-      active: active, ongoing: ongoing, completed: completed
-    };
-  });
-
-  var myProjectsAll = projects.filter(function (p) { return p['Owner User ID'] === currentUser['User ID']; }).map(enrichProject);
-  var myIdeasCount = ideas.filter(function (i) { return i['Owner User ID'] === currentUser['User ID']; }).length;
-  var myAdhocToday = adhoc.filter(function (a) {
-    return a['Owner User ID'] === currentUser['User ID'] &&
-      Utilities.formatDate(new Date(a['Date']), Session.getScriptTimeZone(), 'yyyy-MM-dd') === todayStr;
-  });
-  var myAdhocMinutes = myAdhocToday.reduce(function (sum, a) { return sum + (parseFloat(a['Time Spent']) || 0) * 60; }, 0);
-
-  var personalSummary = {
-    active: myProjectsAll.filter(function (p) { return p.displayStatus === 'In Progress' || p.displayStatus === 'Open'; }).length,
-    completed: myProjectsAll.filter(function (p) { return p.displayStatus === 'Completed'; }).length,
-    ideas: myIdeasCount,
-    adhocTimeToday: formatHoursMinutes(myAdhocMinutes)
-  };
-
-  return {
-    ok: true,
-    data: {
-      currentUser: publicUser(currentUser),
-      greetingName: currentUser['Name'],
-      personalSummary: personalSummary,
-      teamCards: teamCards
-    }
-  };
-}
-
-/**
- * Combines getHomeData + getDailySummary + getNotifications into a single
- * script execution. The homepage used to fire all three separately, which
- * meant 3x the Apps Script cold-start overhead per page load — this cuts
- * that down to one round trip.
- */
-function handleGetHomeBundle(body, currentUser) {
-  var home = handleGetHomeData(body, currentUser);
-  var summary = handleGetDailySummary(body, currentUser);
-  var notifications = handleGetNotifications(body, currentUser);
-  return {
-    ok: true,
-    data: {
-      home: home.ok ? home.data : null,
-      summary: summary.ok ? summary.data : null,
-      notifications: notifications.ok ? notifications.data : null
-    }
-  };
-}
-
-function formatHoursMinutes(totalMinutes) {
-  var h = Math.floor(totalMinutes / 60);
-  var m = Math.round(totalMinutes % 60);
-  if (h === 0) return m + 'm';
-  return h + 'h ' + (m > 0 ? m + 'm' : '');
-}
-
-/**
- * Returns a user's full workspace: projects, ideas, adhoc, honoring privacy:
- *  - Anyone can see anyone's Projects/Ideas/Stakeholders/Status
- *  - Only the owner (or Admin) can see AdHoc/time-spent/activity history
- */
-function handleGetUserWorkspace(body, currentUser) {
-  var targetUserId = body.userId || currentUser['User ID'];
-  var targetUser = findRowByField(SHEETS.USERS, 'User ID', targetUserId);
-  if (!targetUser) return { ok: false, error: 'User not found.' };
-
-  var isSelfOrAdmin = (targetUserId === currentUser['User ID']) || currentUser['Role'] === 'Admin';
-
-  var projects = getAllRows(SHEETS.PROJECTS)
-    .filter(function (p) { return p['Owner User ID'] === targetUserId; })
-    .map(enrichProject);
-
-  var todaysLogs = getAllRows(SHEETS.DAILY_WORK).filter(function (l) {
-    return l['Owner User ID'] === targetUserId && isSameDay(l['Date'], new Date());
-  });
-  var loggedProjectIds = {};
-  todaysLogs.forEach(function (l) { loggedProjectIds[l['Project ID']] = l['Description']; });
-  projects.forEach(function (p) {
-    p.loggedToday = loggedProjectIds.hasOwnProperty(p.projectId);
-    p.todaysLogDescription = loggedProjectIds[p.projectId] || '';
-  });
-
-  var ideas = getAllRows(SHEETS.IDEAS)
-    .filter(function (i) { return i['Owner User ID'] === targetUserId; })
-    .map(function (i) {
-      return {
-        ideaId: i['Idea ID'], ownerUserId: i['Owner User ID'], type: i['Type'],
-        description: i['Description'], expectedImpact: i['Expected Impact'],
-        createdAt: i['Created At'], updatedAt: i['Updated At']
-      };
+    notifCache.forEach(n => {
+      html += `<div class="notif-item" onclick="openWorkspace('${n.userId||''}');document.getElementById('notifDropdown').classList.add('hidden')">
+        <span class="notif-dot" style="background:${colorFor[n.level]}"></span>
+        <span>${escapeHtml(n.avatar||'')} ${escapeHtml(n.message)}</span>
+      </div>`;
     });
+  }
+  el.innerHTML = html;
+}
 
-  var data = {
-    user: publicUser(targetUser),
-    isSelfOrAdmin: isSelfOrAdmin,
-    projects: projects,
-    ideas: ideas,
-    adhoc: [],
-    activityHistory: []
+function showDefaulterPopupIfNeeded(alerts) {
+  if (state.user.role !== 'Admin' || !alerts) return;
+  const overdue = alerts.filter(a => a.level === 'overdue');
+  if (overdue.length === 0) return;
+  let list = overdue.map(o => `<li style="margin-bottom:6px;"><b>${escapeHtml(o.ownerName)}</b> — ${escapeHtml(o.projectName)}</li>`).join('');
+  openModal(`
+    <div class="modal-header"><h2>⚠️ Deadline Report</h2><button class="modal-close" onclick="closeModal()">✕</button></div>
+    <div class="modal-body">
+      <p style="color:var(--ink-soft);font-size:13.5px;line-height:1.6;">
+        The following team member${overdue.length>1?'s have':' has'} exceeded their committed ETA and ${overdue.length>1?'are':'is'} currently flagged as in default of the agreed timeline:
+      </p>
+      <ul style="font-size:13.5px;padding-left:20px;">${list}</ul>
+    </div>
+    <div class="modal-footer"><button class="btn btn-primary" onclick="closeModal()">Acknowledge</button></div>
+  `);
+}
+
+let searchAbort = null;
+function onSearchInput() {
+  clearTimeout(state.searchDebounce);
+  const q = document.getElementById('searchInput').value.trim();
+  if (!q) { document.getElementById('searchResults').classList.add('hidden'); return; }
+  state.searchDebounce = setTimeout(async () => {
+    const res = await apiCall('search', { query: q });
+    if (!res.ok) return;
+    renderSearchResults(res.data.results);
+  }, 280);
+}
+function renderSearchResults(results) {
+  const el = document.getElementById('searchResults');
+  if (results.length === 0) {
+    el.innerHTML = '<div class="search-result-item" style="color:var(--ink-faint)">No matches.</div>';
+  } else {
+    el.innerHTML = results.map(r => `
+      <div class="search-result-item" onclick="onSearchResultClick('${r.userId||''}')">
+        <div class="search-result-type">${r.type}</div>
+        <div>${escapeHtml(r.label)}</div>
+      </div>`).join('');
+  }
+  el.classList.remove('hidden');
+}
+function onSearchResultClick(userId) {
+  document.getElementById('searchResults').classList.add('hidden');
+  document.getElementById('searchInput').value = '';
+  if (userId) openWorkspace(userId);
+}
+document.addEventListener('click', (e) => {
+  if (!e.target.closest('.search-wrap')) document.getElementById('searchResults').classList.add('hidden');
+  if (!e.target.closest('.user-menu-wrap')) document.getElementById('userMenu').classList.add('hidden');
+  if (!e.target.closest('.icon-btn') && !e.target.closest('.notif-dropdown')) document.getElementById('notifDropdown').classList.add('hidden');
+});
+
+/* ============================================================
+   MODAL HELPERS
+   ============================================================ */
+function openModal(innerHtml) {
+  closeModal();
+  const overlay = document.createElement('div');
+  overlay.className = 'overlay';
+  overlay.id = 'activeOverlay';
+  overlay.onclick = (e) => { if (e.target === overlay) closeModal(); };
+  const modal = document.createElement('div');
+  modal.className = 'modal';
+  modal.innerHTML = innerHtml;
+  overlay.appendChild(modal);
+  document.body.appendChild(overlay);
+}
+function closeModal() {
+  const el = document.getElementById('activeOverlay');
+  if (el) el.remove();
+}
+
+/* ============================================================
+   HOME VIEW
+   ============================================================ */
+let homeDataCache = null;
+async function goHome() {
+  state.currentWorkspaceUserId = null;
+  toggleUserMenu(); // closes if open
+  renderLoading();
+  const res = await apiCall('getHomeBundle', {});
+  if (!res.ok || !res.data.home) { renderError(res.error || 'Could not load homepage.'); return; }
+  homeDataCache = res.data.home;
+
+  if (res.data.notifications) {
+    notifCache = res.data.notifications.alerts;
+    const badge = document.getElementById('notifBadge');
+    if (res.data.notifications.count > 0) { badge.textContent = res.data.notifications.count; badge.classList.remove('hidden'); }
+    else badge.classList.add('hidden');
+  }
+
+  renderHome(res.data.home, res.data.summary);
+}
+
+function renderLoading() {
+  document.getElementById('mainContainer').innerHTML = `<div style="padding:80px;text-align:center;color:var(--ink-faint);">Loading Cumin…</div>`;
+}
+function renderError(msg) {
+  document.getElementById('mainContainer').innerHTML = `<div class="empty-state">⚠️ ${escapeHtml(msg)}</div>`;
+}
+
+function greetingMessages() {
+  const hour = new Date().getHours();
+  const timeGreet = hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening';
+  const flair = hour < 12 ? '🌻' : hour < 17 ? '☀️' : '🌙';
+  const lines = ["Here's what's on your plate today.", "Let's make today count.", "Everything's on the board — go get it.", "Good things are in motion.", "One good day builds the next."];
+  return { timeGreet, flair, line: lines[new Date().getDate() % lines.length] };
+}
+
+function renderHome(data, summary) {
+  const g = greetingMessages();
+  const ps = data.personalSummary;
+
+  let filteredTeam = data.teamCards;
+  if (state.homeFilter !== 'All') {
+    filteredTeam = data.teamCards.filter(t => {
+      if (state.homeFilter === 'Ongoing') return t.ongoing > 0;
+      if (state.homeFilter === 'Completed') return t.completed > 0;
+      if (state.homeFilter === 'Delayed') return t.ongoing > 0; // ongoing bucket includes delayed
+      if (state.homeFilter === 'My Work') return t.userId === state.user.userId;
+      return true;
+    });
+  }
+
+  const teamCardsHtml = filteredTeam.map(t => {
+    const color = AVATAR_COLORS[t.avatar] || 'var(--primary)';
+    return `
+    <div class="team-card" onclick="openWorkspace('${t.userId}')">
+      <div class="team-card-roof" style="background:${color}"></div>
+      <div class="team-card-body">
+        <div class="team-card-avatar">${t.avatar}</div>
+        <div class="team-card-name">${escapeHtml(t.name)}</div>
+        <div class="team-card-stats">
+          <div class="tcs-item"><div class="tcs-num" style="color:var(--green)">${t.active}</div><div class="tcs-label">Active</div></div>
+          <div class="tcs-item"><div class="tcs-num" style="color:var(--amber)">${t.ongoing}</div><div class="tcs-label">Ongoing</div></div>
+          <div class="tcs-item"><div class="tcs-num" style="color:var(--primary)">${t.completed}</div><div class="tcs-label">Done</div></div>
+        </div>
+      </div>
+    </div>`;
+  }).join('');
+
+  let summaryHtml = '';
+  if (summary) {
+    const rows = summary.rows.map(r => `
+      <tr>
+        <td class="name-cell">${r.avatar} ${escapeHtml(r.name)}</td>
+        <td>${r.newCount}</td><td>${r.inProgress}</td><td>${r.completed}</td>
+        <td>${r.ideas}</td><td>${r.adhoc}</td>
+        <td style="color:${r.delayed>0?'var(--red)':'inherit'}">${r.delayed}</td>
+      </tr>`).join('');
+    summaryHtml = `
+      <div class="section-title">📊 Today at Cumin</div>
+      <div class="summary-table-wrap">
+        <table>
+          <thead><tr><th>Team Member</th><th>New</th><th>In Progress</th><th>Completed</th><th>Ideas</th><th>Ad-hoc</th><th>Delayed</th></tr></thead>
+          <tbody>${rows}
+            <tr class="total-row"><td>Total</td><td>${summary.totals.newCount}</td><td>${summary.totals.inProgress}</td>
+              <td>${summary.totals.completed}</td><td>${summary.totals.ideas}</td><td>${summary.totals.adhoc}</td><td>${summary.totals.delayed}</td></tr>
+          </tbody>
+        </table>
+      </div>`;
+  }
+
+  document.getElementById('mainContainer').innerHTML = `
+    <div class="greeting-banner">
+      <h1>${g.timeGreet}, ${escapeHtml(data.greetingName)} ${g.flair}</h1>
+      <p>${g.line}</p>
+      <div class="stat-row">
+        <div class="stat-card"><div class="stat-num">${ps.active}</div><div class="stat-label">Active Projects</div></div>
+        <div class="stat-card"><div class="stat-num">${ps.completed}</div><div class="stat-label">Completed</div></div>
+        <div class="stat-card"><div class="stat-num">${ps.ideas}</div><div class="stat-label">Ideas</div></div>
+        <div class="stat-card"><div class="stat-num">${ps.adhocTimeToday}</div><div class="stat-label">Ad-hoc Today</div></div>
+      </div>
+    </div>
+
+    <div class="section-title">👥 Your Team <span class="count">${filteredTeam.length} of ${data.teamCards.length}</span></div>
+    <div class="chip-row">
+      ${['All','My Work','Ongoing','Completed','Delayed'].map(f =>
+        `<button class="chip ${state.homeFilter===f?'active':''}" onclick="setHomeFilter('${f}')">${f}</button>`).join('')}
+    </div>
+    <div class="team-grid">${teamCardsHtml || '<div class="empty-state">No one matches this filter right now — try another view.</div>'}</div>
+
+    ${summaryHtml}
+  `;
+}
+
+function setHomeFilter(f) {
+  state.homeFilter = f;
+  if (homeDataCache) renderHome(homeDataCache, null);
+  goHome(); // re-fetch to also refresh summary table cleanly
+}
+
+/* ============================================================
+   WORKSPACE VIEW
+   ============================================================ */
+async function openWorkspace(userId) {
+  if (!userId) return;
+  document.getElementById('notifDropdown').classList.add('hidden');
+  state.currentWorkspaceUserId = userId;
+  state.currentWorkspaceTab = 'projects';
+  renderLoading();
+  const res = await apiCall('getUserWorkspace', { userId });
+  if (!res.ok) { renderError(res.error); return; }
+  state.workspaceData = res.data;
+  renderWorkspace();
+}
+
+function renderWorkspace() {
+  const d = state.workspaceData;
+  const color = AVATAR_COLORS[d.user.avatar] || 'var(--primary)';
+  const isMine = d.user.userId === state.user.userId;
+
+  const tabs = [
+    { id: 'projects', label: `Projects (${d.projects.length})` },
+    { id: 'ideas', label: `Ideas (${d.ideas.length})` },
+  ];
+  if (d.isSelfOrAdmin) {
+    tabs.push({ id: 'week', label: '📊 This Week' });
+    tabs.push({ id: 'adhoc', label: `Ad-hoc (${d.adhoc.length})` });
+    tabs.push({ id: 'history', label: 'History' });
+  }
+
+  document.getElementById('mainContainer').innerHTML = `
+    <button class="back-link" onclick="goHome()">← Back to Cumin</button>
+    <div class="workspace-header">
+      <div class="ws-avatar">${d.user.avatar}</div>
+      <div>
+        <p class="ws-name">${escapeHtml(d.user.name)}'s Workspace</p>
+        <p class="ws-meta">${escapeHtml(d.user.email)} ${isMine ? '· This is you' : ''}</p>
+      </div>
+      <div class="ws-spacer"></div>
+      ${(isMine) ? `
+        <div class="add-btn-wrap">
+          <button class="btn btn-primary" onclick="toggleAddPicker()">+ Add</button>
+          <div id="addPickerDropdown" class="hidden" style="position:absolute;top:calc(100% + 8px);right:0;z-index:50;width:260px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-md);box-shadow:var(--shadow-md);padding:10px;">
+            <div class="type-picker">
+              <button onclick="openProjectModal()"><span class="tp-icon">📁</span><span>Project<span class="tp-sub">A formal piece of work with an ETA</span></span></button>
+              <button onclick="openIdeaModal()"><span class="tp-icon">💡</span><span>Idea<span class="tp-sub">Something worth exploring later</span></span></button>
+              <button onclick="openAdhocModal()"><span class="tp-icon">⚡</span><span>Ad-hoc<span class="tp-sub">Unplanned work you did today</span></span></button>
+            </div>
+          </div>
+        </div>` : ''}
+    </div>
+
+    <div class="tab-row">
+      ${tabs.map(t => `<button class="tab-btn ${state.currentWorkspaceTab===t.id?'active':''}" onclick="setWorkspaceTab('${t.id}')">${t.label}</button>`).join('')}
+    </div>
+
+    <div id="workspaceTabContent"></div>
+  `;
+  renderWorkspaceTabContent();
+}
+
+function toggleAddPicker() {
+  document.getElementById('addPickerDropdown').classList.toggle('hidden');
+}
+document.addEventListener('click', (e) => {
+  const dd = document.getElementById('addPickerDropdown');
+  if (dd && !e.target.closest('.add-btn-wrap')) dd.classList.add('hidden');
+});
+
+function setWorkspaceTab(tab) {
+  state.currentWorkspaceTab = tab;
+  renderWorkspace();
+}
+
+function renderWorkspaceTabContent() {
+  const d = state.workspaceData;
+  const isMine = d.user.userId === state.user.userId;
+  const canEdit = isMine || state.user.role === 'Admin';
+  const el = document.getElementById('workspaceTabContent');
+
+  if (state.currentWorkspaceTab === 'projects') {
+    el.innerHTML = d.projects.length === 0
+      ? '<div class="empty-state">Nothing here yet — click + Add to start your first project.</div>'
+      : `<div class="card-list">${d.projects.map(p => renderProjectCard(p, canEdit)).join('')}</div>`;
+  } else if (state.currentWorkspaceTab === 'ideas') {
+    el.innerHTML = d.ideas.length === 0
+      ? '<div class="empty-state">No ideas logged yet — every good project starts with one.</div>'
+      : `<div class="card-list">${d.ideas.map(i => renderIdeaCard(i, canEdit)).join('')}</div>`;
+  } else if (state.currentWorkspaceTab === 'adhoc') {
+    el.innerHTML = d.adhoc.length === 0
+      ? '<div class="empty-state">Nothing logged yet — you\'re all caught up.</div>'
+      : `<div class="card-list">${d.adhoc.map(a => renderAdhocCard(a, canEdit)).join('')}</div>`;
+  } else if (state.currentWorkspaceTab === 'history') {
+    el.innerHTML = d.activityHistory.length === 0
+      ? '<div class="empty-state">No activity yet — this fills in as work happens.</div>'
+      : `<div class="card-list">${d.activityHistory.map(renderHistoryItem).join('')}</div>`;
+  } else if (state.currentWorkspaceTab === 'week') {
+    renderWeekTab(d.user.userId);
+  }
+}
+
+async function renderWeekTab(userId) {
+  const el = document.getElementById('workspaceTabContent');
+  el.innerHTML = `<div style="padding:40px;text-align:center;color:var(--ink-faint);">Loading weekly summary…</div>`;
+  const res = await apiCall('getWeeklySummary', { userId });
+  if (!res.ok) { el.innerHTML = `<div class="empty-state">⚠️ ${escapeHtml(res.error)}</div>`; return; }
+  const { days, totals } = res.data;
+  const maxCheckIns = Math.max(1, ...days.map(d => d.checkIns));
+  const maxHours = Math.max(1, ...days.map(d => d.adhocHours));
+
+  el.innerHTML = `
+    <div class="week-summary-row">
+      <div class="week-stat"><div class="week-stat-num">${totals.projectsTouched}</div><div class="week-stat-label">Projects Touched</div></div>
+      <div class="week-stat"><div class="week-stat-num">${totals.totalHours}h</div><div class="week-stat-label">Hours Logged</div></div>
+      <div class="week-stat"><div class="week-stat-num">${totals.ideasAdded}</div><div class="week-stat-label">Ideas Added</div></div>
+      <div class="week-stat"><div class="week-stat-num">${totals.completed}</div><div class="week-stat-label">Completed</div></div>
+    </div>
+    <div class="chart-card" style="margin-bottom:14px;">
+      <h3>Daily check-ins</h3>
+      <div class="bar-chart">
+        ${days.map(d => `
+          <div class="bar-col">
+            <div class="bar-value">${d.checkIns || ''}</div>
+            <div class="bar-track"><div class="bar-fill" style="height:${d.checkIns === 0 ? 2 : (d.checkIns / maxCheckIns * 100)}%;"></div></div>
+            <div class="bar-day-label">${d.label}</div>
+          </div>`).join('')}
+      </div>
+    </div>
+    <div class="chart-card">
+      <h3>Ad-hoc hours logged</h3>
+      <div class="bar-chart">
+        ${days.map(d => `
+          <div class="bar-col">
+            <div class="bar-value">${d.adhocHours || ''}</div>
+            <div class="bar-track"><div class="bar-fill" style="height:${d.adhocHours === 0 ? 2 : (d.adhocHours / maxHours * 100)}%;background:var(--warm);"></div></div>
+            <div class="bar-day-label">${d.label}</div>
+          </div>`).join('')}
+      </div>
+    </div>
+  `;
+}
+
+function zoneColor(zone) { return zone === 'green' ? 'var(--green)' : zone === 'amber' ? 'var(--amber)' : 'var(--red)'; }
+function pillClassForDisplayStatus(status) {
+  if (status === 'Completed') return 'pill-green';
+  if (status === 'Delayed') return 'pill-red';
+  if (status === 'On Hold') return 'pill-amber';
+  return 'pill-neutral';
+}
+
+function renderZoneBar(p) {
+  if (p.status === 'Completed') {
+    return `<div class="zonebar-wrap">
+      <div class="zonebar"><div class="z-green" style="width:100%"></div></div>
+      <div class="zonebar-label">${escapeHtml(p.completionVariance || 'Completed')}</div>
+    </div>`;
+  }
+  const markerPos = p.zone === 'green' ? 20 : p.zone === 'amber' ? 55 : 90;
+  const label = p.displayStatus === 'Delayed'
+    ? `${Math.abs(p.daysRemaining)} day(s) overdue`
+    : `${p.daysRemaining} day(s) remaining`;
+  return `<div class="zonebar-wrap">
+    <div class="zonebar" style="position:relative;">
+      <div class="z-green" style="width:33.3%"></div><div class="z-amber" style="width:33.3%"></div><div class="z-red" style="width:33.4%"></div>
+      <div class="zonebar-marker" style="left:${markerPos}%;background:${zoneColor(p.zone)}"></div>
+    </div>
+    <div class="zonebar-label" style="color:${zoneColor(p.zone)}">${label}</div>
+  </div>`;
+}
+
+function renderStakeholders(str) {
+  if (!str) return '';
+  const parts = String(str).split('→').map(s => s.trim()).filter(Boolean);
+  if (parts.length === 0) return '';
+  return `<div class="stakeholder-chain">${parts.map((s,i) =>
+    (i>0?'<span class="stakeholder-arrow">→</span>':'') + `<span class="stakeholder-node">${escapeHtml(s)}</span>`
+  ).join('')}</div>`;
+}
+
+function renderProjectCard(p, canEdit) {
+  const isAdmin = state.user.role === 'Admin';
+  const editControls = canEdit ? `
+    <div class="inline-edit-row">
+      <select class="inline-select" onchange="updateProjectField('${p.projectId}','status',this.value)">
+        ${PROJECT_STATUSES.map(s => `<option value="${s}" ${p.status===s?'selected':''}>${s==='Open'?'Open / To Be Picked':s}</option>`).join('')}
+      </select>
+      ${isAdmin
+        ? `<input type="date" class="inline-date" value="${formatDateInput(p.eta)}" onchange="updateProjectField('${p.projectId}','eta',this.value)">`
+        : `<span class="pill pill-neutral" title="Only Admin can change the deadline">🔒 ETA: ${formatDateDisplay(p.eta)}</span>`}
+      ${p.status==='Completed' ? `<input type="date" class="inline-date" value="${formatDateInput(p.actualCompletionDate)}" placeholder="Completion date" onchange="updateProjectField('${p.projectId}','actualCompletionDate',this.value)">` : ''}
+      <button class="btn btn-ghost btn-sm" onclick="openEditProjectModal('${p.projectId}')">Edit details</button>
+    </div>` : '';
+
+  return `<div class="item-card">
+    <div class="item-card-top">
+      <div>
+        <div class="item-title">${escapeHtml(p.projectName)}</div>
+      </div>
+      <div style="display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end;">
+        <span class="pill ${pillClassForDisplayStatus(p.displayStatus)}">${p.displayStatus}</span>
+        <span class="pill pill-priority-${p.priority}">${p.priority}</span>
+      </div>
+    </div>
+    <div class="item-desc">${escapeHtml(p.description || '')}</div>
+    ${renderZoneBar(p)}
+    <div class="meta-row">
+      <div class="meta-item">ETA: <b>${formatDateDisplay(p.eta)}</b></div>
+      ${p.impact ? `<div class="meta-item">Impact: <b>${escapeHtml(p.impact)}</b></div>` : ''}
+      ${p.dependency ? `<div class="meta-item">Dependency: <b>${escapeHtml(p.dependency)}</b></div>` : ''}
+    </div>
+    ${renderStakeholders(p.stakeholders)}
+    ${editControls}
+    ${canEdit ? renderCheckinRow(p) : ''}
+  </div>`;
+}
+
+function openEditProjectModal(projectId) {
+  const p = state.workspaceData.projects.find(x => x.projectId === projectId);
+  if (!p) return;
+  const isAdmin = state.user.role === 'Admin';
+  openModal(`
+    <div class="modal-header"><h2>Edit Project Details</h2><button class="modal-close" onclick="closeModal()">✕</button></div>
+    <div class="modal-body">
+      <div class="field"><label>Project Name</label><input id="epName" value="${escapeAttr(p.projectName)}"></div>
+      <div class="field"><label>Description</label><textarea id="epDesc">${escapeHtml(p.description || '')}</textarea></div>
+      <div class="field"><label>Impact</label><input id="epImpact" value="${escapeAttr(p.impact || '')}"></div>
+      <div class="field"><label>Priority</label><select id="epPriority">${PRIORITIES.map(pr => `<option value="${pr}" ${p.priority===pr?'selected':''}>${pr}</option>`).join('')}</select></div>
+      <div class="field"><label>Dependency</label><input id="epDependency" value="${escapeAttr(p.dependency || '')}"></div>
+      <div class="field"><label>Stakeholders</label><input id="epStakeholders" value="${escapeAttr(p.stakeholders || '')}" placeholder="e.g. Ops team, Finance (optional)"></div>
+      <div class="field">
+        <label>ETA (Deadline)</label>
+        ${isAdmin
+          ? `<input type="date" id="epEta" value="${formatDateInput(p.eta)}">`
+          : `<input value="${formatDateDisplay(p.eta)}" disabled style="opacity:.6;cursor:not-allowed;">
+             <p style="font-size:12px;color:var(--ink-faint);margin-top:6px;">🔒 Only Admin can change the deadline. Ask them if this needs to move.</p>`}
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="closeModal()">Cancel</button>
+      <button class="btn btn-primary" onclick="submitEditProject('${projectId}')">Save Changes</button>
+    </div>
+  `);
+}
+
+async function submitEditProject(projectId) {
+  const updates = {
+    projectName: val('epName'), description: val('epDesc'), impact: val('epImpact'),
+    priority: val('epPriority'), dependency: val('epDependency'), stakeholders: val('epStakeholders')
   };
-
-  if (isSelfOrAdmin) {
-    data.adhoc = getAllRows(SHEETS.ADHOC)
-      .filter(function (a) { return a['Owner User ID'] === targetUserId; })
-      .map(function (a) {
-        return {
-          adhocId: a['AdHoc ID'], ownerUserId: a['Owner User ID'], task: a['Task'],
-          timeSpent: a['Time Spent'], description: a['Description'],
-          source: a['Source'], date: a['Date']
-        };
-      });
-    data.activityHistory = getAllRows(SHEETS.ACTIVITY)
-      .filter(function (a) { return a['User ID'] === targetUserId; })
-      .sort(function (a, b) { return new Date(b['Timestamp']) - new Date(a['Timestamp']); });
+  if (state.user.role === 'Admin') {
+    const etaEl = document.getElementById('epEta');
+    if (etaEl) updates.eta = etaEl.value;
   }
-
-  return { ok: true, data: data };
+  if (!updates.projectName) { showToast('⚠️ Project name is required'); return; }
+  const res = await apiCall('updateProject', { projectId, updates });
+  if (!res.ok) { showToast('⚠️ ' + res.error); return; }
+  closeModal(); showToast('✓ Project details updated');
+  await openWorkspace(state.currentWorkspaceUserId);
 }
 
-/** Team-wide daily activity pivot: New / In Progress / Completed / Ideas / AdHoc / Delayed per person, for today. */
-function handleGetDailySummary(body, currentUser) {
-  var users = getAllRows(SHEETS.USERS).filter(function (u) { return u['Status'] === 'Active'; });
-  var projects = getAllRows(SHEETS.PROJECTS);
-  var ideas = getAllRows(SHEETS.IDEAS);
-  var adhoc = getAllRows(SHEETS.ADHOC);
-  var tz = Session.getScriptTimeZone();
-  var todayStr = Utilities.formatDate(new Date(), tz, 'yyyy-MM-dd');
+function renderCheckinRow(p) {
+  const logged = !!p.loggedToday;
+  return `<div class="checkin-row ${logged ? 'logged' : ''}">
+    <input type="checkbox" id="checkin-${p.projectId}" ${logged ? 'checked' : ''} onchange="onCheckinToggle('${p.projectId}', this)">
+    <label class="checkin-label" for="checkin-${p.projectId}">${logged ? '✓ Logged work on this today' : 'I worked on this project today'}</label>
+    ${logged ? `<button class="link-btn" style="margin-left:auto;font-size:12px;" onclick="openProjectCheckinEdit('${p.projectId}', event)">Edit</button>` : ''}
+  </div>
+  ${logged && p.todaysLogDescription ? `<div class="checkin-note">"${escapeHtml(p.todaysLogDescription)}"</div>` : ''}`;
+}
 
-  function isToday(dateVal) {
-    if (!dateVal) return false;
-    return Utilities.formatDate(new Date(dateVal), tz, 'yyyy-MM-dd') === todayStr;
+function onCheckinToggle(projectId, checkbox) {
+  if (checkbox.checked) {
+    checkbox.checked = false; // don't flip visually until saved
+    openCheckinModal(projectId, '');
+  } else {
+    checkbox.checked = true; // don't flip visually until confirmed
+    if (!confirm("Remove today's check-in for this project?")) { checkbox.checked = true; return; }
+    removeCheckin(projectId);
   }
-
-  var rows = users.map(function (u) {
-    var myProjects = projects.filter(function (p) { return p['Owner User ID'] === u['User ID']; });
-    var newToday = myProjects.filter(function (p) { return isToday(p['Created At']); }).length;
-    var enriched = myProjects.map(enrichProject);
-    var inProgress = enriched.filter(function (p) { return p.displayStatus === 'In Progress'; }).length;
-    var completedToday = myProjects.filter(function (p) {
-      return p['Status'] === 'Completed' && isToday(p['Actual Completion Date']);
-    }).length;
-    var ideasToday = ideas.filter(function (i) { return i['Owner User ID'] === u['User ID'] && isToday(i['Created At']); }).length;
-    var adhocToday = adhoc.filter(function (a) { return a['Owner User ID'] === u['User ID'] && isToday(a['Date']); }).length;
-    var delayed = enriched.filter(function (p) { return p.displayStatus === 'Delayed'; }).length;
-
-    return {
-      userId: u['User ID'], name: u['Name'], avatar: u['Avatar'],
-      newCount: newToday, inProgress: inProgress, completed: completedToday,
-      ideas: ideasToday, adhoc: adhocToday, delayed: delayed
-    };
-  });
-
-  var totals = rows.reduce(function (acc, r) {
-    acc.newCount += r.newCount; acc.inProgress += r.inProgress; acc.completed += r.completed;
-    acc.ideas += r.ideas; acc.adhoc += r.adhoc; acc.delayed += r.delayed;
-    return acc;
-  }, { newCount: 0, inProgress: 0, completed: 0, ideas: 0, adhoc: 0, delayed: 0 });
-
-  return { ok: true, data: { rows: rows, totals: totals, date: todayStr } };
 }
 
-/** Deadline alerts: overdue / due today / due tomorrow, across everyone. Visible to all (surfaced prominently for Admin). */
-function handleGetNotifications(body, currentUser) {
-  var projects = getAllRows(SHEETS.PROJECTS).filter(function (p) { return p['Status'] !== 'Completed'; });
-  var users = getAllRows(SHEETS.USERS);
-  var userMap = {};
-  users.forEach(function (u) { userMap[u['User ID']] = u; });
-
-  var tz = Session.getScriptTimeZone();
-  var todayStr = Utilities.formatDate(new Date(), tz, 'yyyy-MM-dd');
-  var tomorrow = new Date(); tomorrow.setDate(tomorrow.getDate() + 1);
-  var tomorrowStr = Utilities.formatDate(tomorrow, tz, 'yyyy-MM-dd');
-
-  var alerts = [];
-  projects.forEach(function (p) {
-    var info = computeProjectStatusInfo(p);
-    var etaStr = Utilities.formatDate(new Date(p['ETA']), tz, 'yyyy-MM-dd');
-    var owner = userMap[p['Owner User ID']] || {};
-    if (info.displayStatus === 'Delayed') {
-      alerts.push({
-        level: 'overdue', ownerName: owner['Name'], avatar: owner['Avatar'],
-        projectId: p['Project ID'], projectName: p['Project Name'],
-        message: (owner['Name'] || 'Someone') + ' — ' + p['Project Name'] + ' — ' + info.daysRemaining * -1 + ' day(s) overdue'
-      });
-    } else if (etaStr === todayStr) {
-      alerts.push({
-        level: 'dueToday', ownerName: owner['Name'], avatar: owner['Avatar'],
-        projectId: p['Project ID'], projectName: p['Project Name'],
-        message: (owner['Name'] || 'Someone') + ' — ' + p['Project Name'] + ' — due today'
-      });
-    } else if (etaStr === tomorrowStr) {
-      alerts.push({
-        level: 'dueTomorrow', ownerName: owner['Name'], avatar: owner['Avatar'],
-        projectId: p['Project ID'], projectName: p['Project Name'],
-        message: (owner['Name'] || 'Someone') + ' — ' + p['Project Name'] + ' — due tomorrow'
-      });
-    }
-  });
-
-  var order = { overdue: 0, dueToday: 1, dueTomorrow: 2 };
-  alerts.sort(function (a, b) { return order[a.level] - order[b.level]; });
-
-  return { ok: true, data: { alerts: alerts, count: alerts.length } };
+function openProjectCheckinEdit(projectId, event) {
+  event.stopPropagation();
+  const d = state.workspaceData;
+  const project = d.projects.find(p => p.projectId === projectId);
+  openCheckinModal(projectId, project ? project.todaysLogDescription : '');
 }
 
-function handleSearch(body, currentUser) {
-  var q = String(body.query || '').trim().toLowerCase();
-  if (!q) return { ok: true, data: { results: [] } };
-
-  var users = getAllRows(SHEETS.USERS);
-  var userMap = {};
-  users.forEach(function (u) { userMap[u['User ID']] = u; });
-
-  var results = [];
-
-  users.forEach(function (u) {
-    if (String(u['Name']).toLowerCase().indexOf(q) !== -1) {
-      results.push({ type: 'person', label: u['Avatar'] + ' ' + u['Name'], userId: u['User ID'] });
-    }
-  });
-
-  getAllRows(SHEETS.PROJECTS).forEach(function (p) {
-    if (String(p['Project Name']).toLowerCase().indexOf(q) !== -1 ||
-        String(p['Description']).toLowerCase().indexOf(q) !== -1) {
-      var owner = userMap[p['Owner User ID']] || {};
-      results.push({
-        type: 'project', label: (owner['Avatar'] || '') + ' ' + owner['Name'] + ' — ' + p['Project Name'],
-        userId: p['Owner User ID'], projectId: p['Project ID']
-      });
-    }
-  });
-
-  getAllRows(SHEETS.IDEAS).forEach(function (i) {
-    if (String(i['Description']).toLowerCase().indexOf(q) !== -1 ||
-        String(i['Type']).toLowerCase().indexOf(q) !== -1) {
-      var owner = userMap[i['Owner User ID']] || {};
-      results.push({
-        type: 'idea', label: (owner['Avatar'] || '') + ' ' + owner['Name'] + ' — ' + i['Type'] + ' idea',
-        userId: i['Owner User ID'], ideaId: i['Idea ID']
-      });
-    }
-  });
-
-  return { ok: true, data: { results: results.slice(0, 25) } };
+function openCheckinModal(projectId, existingText) {
+  openModal(`
+    <div class="modal-header"><h2>What did you work on?</h2><button class="modal-close" onclick="closeModal()">✕</button></div>
+    <div class="modal-body">
+      <div class="field"><label>Quick explanation (optional)</label><textarea id="checkinDesc" placeholder="e.g. Followed up with vendor, updated the cost sheet...">${escapeHtml(existingText || '')}</textarea></div>
+      <p style="font-size:12px;color:var(--ink-faint);margin-top:-8px;">Leave it blank if you just want to log that you worked on this today — a note just helps everyone stay in the loop.</p>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="closeModal()">Cancel</button>
+      <button class="btn btn-primary" onclick="submitCheckin('${projectId}')">${existingText ? 'Save changes' : 'Log it'}</button>
+    </div>
+  `);
+  setTimeout(() => document.getElementById('checkinDesc') && document.getElementById('checkinDesc').focus(), 50);
 }
 
-function handleGetActivityHistory(body, currentUser) {
-  var targetUserId = body.userId || currentUser['User ID'];
-  if (targetUserId !== currentUser['User ID'] && currentUser['Role'] !== 'Admin') {
-    return { ok: false, error: 'Not authorized to view this history.' };
-  }
-  var rows = getAllRows(SHEETS.ACTIVITY)
-    .filter(function (a) { return a['User ID'] === targetUserId; })
-    .sort(function (a, b) { return new Date(b['Timestamp']) - new Date(a['Timestamp']); });
-  return { ok: true, data: { history: rows } };
-}
-
-// ============================================================================
-// ACTIVITY LOGGING
-// ============================================================================
-
-function logActivity(userId, module, recordId, action, fieldChanged, oldValue, newValue, changedByUserId) {
-  appendRowObject(SHEETS.ACTIVITY, {
-    'Activity ID': generateNextId('ACT', SHEETS.ACTIVITY, 'Activity ID'),
-    'User ID': userId,
-    'Module': module,
-    'Record ID': recordId,
-    'Action': action,
-    'Field Changed': fieldChanged || '',
-    'Old Value': oldValue === undefined || oldValue === null ? '' : oldValue,
-    'New Value': newValue === undefined || newValue === null ? '' : newValue,
-    'Timestamp': new Date(),
-    'Changed By': changedByUserId
-  });
-}
-
-/** Diffs two field maps and logs one activity row per changed field. */
-function logFieldDiffs(userId, module, recordId, before, after, changedByUserId) {
-  Object.keys(after).forEach(function (field) {
-    var oldVal = before[field];
-    var newVal = after[field];
-    if (String(oldVal) !== String(newVal)) {
-      logActivity(userId, module, recordId, 'Updated', field, oldVal, newVal, changedByUserId);
-    }
-  });
-}
-
-// ============================================================================
-// PROJECTS
-// ============================================================================
-
-function handleCreateProject(body, currentUser) {
-  var p = body.project || {};
-  if (!p.projectName || !p.eta) return { ok: false, error: 'Project name and ETA are required.' };
-
-  var ownerUserId = currentUser['User ID']; // users can only create for themselves
-  var id = generateNextId('P', SHEETS.PROJECTS, 'Project ID');
-  var now = new Date();
-
-  var record = {
-    'Project ID': id,
-    'Owner User ID': ownerUserId,
-    'Project Name': p.projectName,
-    'Description': p.description || '',
-    'Status': PROJECT_STATUSES.indexOf(p.status) !== -1 ? p.status : 'Open',
-    'ETA': p.eta,
-    'Actual Completion Date': p.actualCompletionDate || '',
-    'Impact': p.impact || '',
-    'Priority': PRIORITIES.indexOf(p.priority) !== -1 ? p.priority : 'P2',
-    'Dependency': p.dependency || '',
-    'Stakeholders': p.stakeholders || '',
-    'Created At': now,
-    'Updated At': now
-  };
-  appendRowObject(SHEETS.PROJECTS, record);
-  logActivity(ownerUserId, 'Projects', id, 'Created', '', '', p.projectName, currentUser['User ID']);
-
-  return { ok: true, data: { project: enrichProject(record) } };
-}
-
-function handleUpdateProject(body, currentUser) {
-  var projectId = body.projectId;
-  var updates = body.updates || {};
-  var existing = findRowByField(SHEETS.PROJECTS, 'Project ID', projectId);
-  if (!existing) return { ok: false, error: 'Project not found.' };
-
-  var isOwner = existing['Owner User ID'] === currentUser['User ID'];
-  if (!isOwner && currentUser['Role'] !== 'Admin') {
-    return { ok: false, error: 'You can only edit your own projects.' };
-  }
-  if (updates.hasOwnProperty('eta') && currentUser['Role'] !== 'Admin') {
-    return { ok: false, error: 'Only Admin can change a project\'s deadline (ETA).' };
-  }
-
-  var fieldMap = {
-    projectName: 'Project Name', description: 'Description', status: 'Status',
-    eta: 'ETA', actualCompletionDate: 'Actual Completion Date', impact: 'Impact',
-    priority: 'Priority', dependency: 'Dependency', stakeholders: 'Stakeholders'
-  };
-
-  var before = {}, after = {}, sheetUpdates = {};
-  Object.keys(updates).forEach(function (key) {
-    var sheetField = fieldMap[key];
-    if (!sheetField) return;
-    before[sheetField] = existing[sheetField];
-    after[sheetField] = updates[key];
-    sheetUpdates[sheetField] = updates[key];
-  });
-  sheetUpdates['Updated At'] = new Date();
-
-  updateRowByIdField(SHEETS.PROJECTS, 'Project ID', projectId, sheetUpdates);
-  logFieldDiffs(existing['Owner User ID'], 'Projects', projectId, before, after, currentUser['User ID']);
-
-  var updated = findRowByField(SHEETS.PROJECTS, 'Project ID', projectId);
-  return { ok: true, data: { project: enrichProject(updated) } };
-}
-
-// ============================================================================
-// IDEAS
-// ============================================================================
-
-function handleCreateIdea(body, currentUser) {
-  var i = body.idea || {};
-  if (!i.description || IDEA_TYPES.indexOf(i.type) === -1) {
-    return { ok: false, error: 'A valid type and description are required.' };
-  }
-  var id = generateNextId('I', SHEETS.IDEAS, 'Idea ID');
-  var now = new Date();
-  var record = {
-    'Idea ID': id, 'Owner User ID': currentUser['User ID'], 'Type': i.type,
-    'Description': i.description, 'Expected Impact': i.expectedImpact || '',
-    'Created At': now, 'Updated At': now
-  };
-  appendRowObject(SHEETS.IDEAS, record);
-  logActivity(currentUser['User ID'], 'Ideas', id, 'Created', '', '', i.description, currentUser['User ID']);
-  return { ok: true, data: { idea: record } };
-}
-
-function handleUpdateIdea(body, currentUser) {
-  var ideaId = body.ideaId;
-  var updates = body.updates || {};
-  var existing = findRowByField(SHEETS.IDEAS, 'Idea ID', ideaId);
-  if (!existing) return { ok: false, error: 'Idea not found.' };
-  if (existing['Owner User ID'] !== currentUser['User ID'] && currentUser['Role'] !== 'Admin') {
-    return { ok: false, error: 'You can only edit your own ideas.' };
-  }
-
-  var fieldMap = { type: 'Type', description: 'Description', expectedImpact: 'Expected Impact' };
-  var before = {}, after = {}, sheetUpdates = {};
-  Object.keys(updates).forEach(function (key) {
-    var sheetField = fieldMap[key];
-    if (!sheetField) return;
-    before[sheetField] = existing[sheetField];
-    after[sheetField] = updates[key];
-    sheetUpdates[sheetField] = updates[key];
-  });
-  sheetUpdates['Updated At'] = new Date();
-
-  updateRowByIdField(SHEETS.IDEAS, 'Idea ID', ideaId, sheetUpdates);
-  logFieldDiffs(existing['Owner User ID'], 'Ideas', ideaId, before, after, currentUser['User ID']);
-
-  return { ok: true, data: { idea: findRowByField(SHEETS.IDEAS, 'Idea ID', ideaId) } };
-}
-
-// ============================================================================
-// AD-HOC
-// ============================================================================
-
-function handleCreateAdhoc(body, currentUser) {
-  var a = body.adhoc || {};
-  if (!a.task || !a.timeSpent) return { ok: false, error: 'Task and time spent are required.' };
-  var id = generateNextId('A', SHEETS.ADHOC, 'AdHoc ID');
-  var record = {
-    'AdHoc ID': id, 'Owner User ID': currentUser['User ID'], 'Task': a.task,
-    'Time Spent': a.timeSpent, 'Description': a.description || '',
-    'Source': a.source || '', 'Date': a.date || new Date()
-  };
-  appendRowObject(SHEETS.ADHOC, record);
-  logActivity(currentUser['User ID'], 'AdHoc', id, 'Created', '', '', a.task, currentUser['User ID']);
-  return { ok: true, data: { adhoc: record } };
-}
-
-function handleUpdateAdhoc(body, currentUser) {
-  var adhocId = body.adhocId;
-  var updates = body.updates || {};
-  var existing = findRowByField(SHEETS.ADHOC, 'AdHoc ID', adhocId);
-  if (!existing) return { ok: false, error: 'Ad-hoc entry not found.' };
-  if (existing['Owner User ID'] !== currentUser['User ID'] && currentUser['Role'] !== 'Admin') {
-    return { ok: false, error: 'You can only edit your own ad-hoc entries.' };
-  }
-
-  var fieldMap = { task: 'Task', timeSpent: 'Time Spent', description: 'Description', source: 'Source', date: 'Date' };
-  var before = {}, after = {}, sheetUpdates = {};
-  Object.keys(updates).forEach(function (key) {
-    var sheetField = fieldMap[key];
-    if (!sheetField) return;
-    before[sheetField] = existing[sheetField];
-    after[sheetField] = updates[key];
-    sheetUpdates[sheetField] = updates[key];
-  });
-
-  updateRowByIdField(SHEETS.ADHOC, 'AdHoc ID', adhocId, sheetUpdates);
-  logFieldDiffs(existing['Owner User ID'], 'AdHoc', adhocId, before, after, currentUser['User ID']);
-
-  return { ok: true, data: { adhoc: findRowByField(SHEETS.ADHOC, 'AdHoc ID', adhocId) } };
-}
-
-// ============================================================================
-// DAILY WORK LOG ("I worked on this today" check-ins)
-// ============================================================================
-
-var JUNK_ANSWERS = ['na', 'n/a', 'not applicable', 'none', 'nil', '-', 'nothing',
+const JUNK_ANSWERS = ['na', 'n/a', 'not applicable', 'none', 'nil', '-', 'nothing',
   'xyz', 'test', 'asdf', 'tbd', 'pending', 'ok', 'done', '...', '.', 'abc', 'idk'];
 
 function isJunkDescription(text) {
-  var normalized = String(text).trim().toLowerCase().replace(/[.\-_!]+$/g, '');
-  if (normalized.length < 8) return true;
-  if (JUNK_ANSWERS.indexOf(normalized) !== -1) return true;
-  return false;
+  const normalized = String(text).trim().toLowerCase().replace(/[.\-_!]+$/g, '');
+  return normalized.length < 8 || JUNK_ANSWERS.includes(normalized);
 }
 
-function handleLogDailyWork(body, currentUser) {
-  var projectId = body.projectId;
-  var description = String(body.description || '').trim();
-  if (!projectId) return { ok: false, error: 'Missing project.' };
-  if (description && isJunkDescription(description)) {
-    return { ok: false, error: 'That doesn\'t look like a real explanation — either leave it blank or describe what you actually worked on.' };
-  }
-
-  var project = findRowByField(SHEETS.PROJECTS, 'Project ID', projectId);
-  if (!project) return { ok: false, error: 'Project not found.' };
-  if (project['Owner User ID'] !== currentUser['User ID'] && currentUser['Role'] !== 'Admin') {
-    return { ok: false, error: 'You can only log work on your own projects.' };
-  }
-
-  var ownerUserId = project['Owner User ID'];
-  var today = new Date();
-  var existing = getAllRows(SHEETS.DAILY_WORK).filter(function (l) {
-    return l['Project ID'] === projectId && l['Owner User ID'] === ownerUserId && isSameDay(l['Date'], today);
-  })[0];
-
-  if (existing) {
-    updateRowByIdField(SHEETS.DAILY_WORK, 'Log ID', existing['Log ID'], { 'Description': description });
-    logActivity(ownerUserId, 'DailyWorkLog', existing['Log ID'], 'Updated', 'Description', existing['Description'], description, currentUser['User ID']);
-    return { ok: true, data: { logId: existing['Log ID'] } };
-  }
-
-  var id = generateNextId('DWL', SHEETS.DAILY_WORK, 'Log ID');
-  appendRowObject(SHEETS.DAILY_WORK, {
-    'Log ID': id, 'Project ID': projectId, 'Owner User ID': ownerUserId,
-    'Date': today, 'Description': description, 'Created At': today
-  });
-  logActivity(ownerUserId, 'DailyWorkLog', id, 'Created', '', '', description, currentUser['User ID']);
-  return { ok: true, data: { logId: id } };
+async function submitCheckin(projectId) {
+  const description = val('checkinDesc');
+  if (description && isJunkDescription(description)) { showToast('⚠️ Leave it blank or write a real explanation'); return; }
+  const res = await apiCall('logDailyWork', { projectId, description });
+  if (!res.ok) { showToast('⚠️ ' + res.error); return; }
+  closeModal(); showToast('✓ Logged — thanks for keeping this updated');
+  await openWorkspace(state.currentWorkspaceUserId);
 }
 
-function handleDeleteDailyWork(body, currentUser) {
-  var projectId = body.projectId;
-  var project = findRowByField(SHEETS.PROJECTS, 'Project ID', projectId);
-  if (!project) return { ok: false, error: 'Project not found.' };
-  if (project['Owner User ID'] !== currentUser['User ID'] && currentUser['Role'] !== 'Admin') {
-    return { ok: false, error: 'You can only remove your own check-ins.' };
-  }
-
-  var today = new Date();
-  var existing = getAllRows(SHEETS.DAILY_WORK).filter(function (l) {
-    return l['Project ID'] === projectId && l['Owner User ID'] === project['Owner User ID'] && isSameDay(l['Date'], today);
-  })[0];
-  if (!existing) return { ok: true, data: {} }; // nothing to remove, treat as success
-
-  deleteRowByIdField(SHEETS.DAILY_WORK, 'Log ID', existing['Log ID']);
-  logActivity(project['Owner User ID'], 'DailyWorkLog', existing['Log ID'], 'Removed', '', existing['Description'], '', currentUser['User ID']);
-  return { ok: true, data: {} };
+async function removeCheckin(projectId) {
+  const res = await apiCall('deleteDailyWork', { projectId });
+  if (!res.ok) { showToast('⚠️ ' + res.error); return; }
+  showToast('✓ Removed');
+  await openWorkspace(state.currentWorkspaceUserId);
 }
 
-/**
- * Returns the last 7 days (oldest first, today last) of activity for a user:
- * check-ins logged, ad-hoc hours, ideas added, and projects completed —
- * for the "This Week" chart on their profile. Same privacy rule as ad-hoc/history:
- * only the owner or Admin can view it.
- */
-function handleGetWeeklySummary(body, currentUser) {
-  var targetUserId = body.userId || currentUser['User ID'];
-  if (targetUserId !== currentUser['User ID'] && currentUser['Role'] !== 'Admin') {
-    return { ok: false, error: 'Not authorized to view this summary.' };
-  }
+function renderIdeaCard(i, canEdit) {
+  return `<div class="item-card">
+    <div class="item-card-top">
+      <div class="item-title">${escapeHtml(i.description)}</div>
+      <span class="pill pill-neutral">${escapeHtml(i.type)}</span>
+    </div>
+    ${i.expectedImpact ? `<div class="item-desc"><b>Expected impact:</b> ${escapeHtml(i.expectedImpact)}</div>` : ''}
+  </div>`;
+}
 
-  var tz = Session.getScriptTimeZone();
-  var dailyWork = getAllRows(SHEETS.DAILY_WORK).filter(function (l) { return l['Owner User ID'] === targetUserId; });
-  var adhoc = getAllRows(SHEETS.ADHOC).filter(function (a) { return a['Owner User ID'] === targetUserId; });
-  var ideas = getAllRows(SHEETS.IDEAS).filter(function (i) { return i['Owner User ID'] === targetUserId; });
-  var projects = getAllRows(SHEETS.PROJECTS).filter(function (p) { return p['Owner User ID'] === targetUserId; });
+function renderAdhocCard(a, canEdit) {
+  return `<div class="item-card">
+    <div class="item-card-top">
+      <div class="item-title">${escapeHtml(a.task)}</div>
+      <span class="pill pill-neutral">${a.timeSpent}h</span>
+    </div>
+    <div class="item-desc">${escapeHtml(a.description || '')}</div>
+    <div class="meta-row">
+      ${a.source ? `<div class="meta-item">Source: <b>${escapeHtml(a.source)}</b></div>` : ''}
+      <div class="meta-item">Date: <b>${formatDateDisplay(a.date)}</b></div>
+    </div>
+  </div>`;
+}
 
-  var days = [];
-  for (var i = 6; i >= 0; i--) {
-    var d = new Date();
-    d.setDate(d.getDate() - i);
-    var dayStr = Utilities.formatDate(d, tz, 'yyyy-MM-dd');
-    var label = Utilities.formatDate(d, tz, 'EEE');
+function renderHistoryItem(h) {
+  return `<div class="item-card" style="padding:14px 18px;">
+    <div style="font-family:var(--font-mono);font-size:11.5px;color:var(--ink-faint);margin-bottom:4px;">${formatDateTimeDisplay(h['Timestamp'])}</div>
+    <div style="font-size:13.5px;"><b>${escapeHtml(h['Module'])}</b> — ${escapeHtml(h['Action'])}${h['Field Changed'] ? ' · ' + escapeHtml(h['Field Changed']) : ''}</div>
+    ${h['Field Changed'] ? `<div style="font-size:12.5px;color:var(--ink-soft);margin-top:4px;">${escapeHtml(String(h['Old Value']||'—'))} → ${escapeHtml(String(h['New Value']||'—'))}</div>` : ''}
+  </div>`;
+}
 
-    var checkIns = dailyWork.filter(function (l) { return isSameDay(l['Date'], d); }).length;
-    var hours = adhoc.filter(function (a) { return isSameDay(a['Date'], d); })
-      .reduce(function (sum, a) { return sum + (parseFloat(a['Time Spent']) || 0); }, 0);
+async function updateProjectField(projectId, field, value) {
+  const updates = {}; updates[field] = value;
+  const res = await apiCall('updateProject', { projectId, updates });
+  if (!res.ok) { showToast('⚠️ ' + res.error); return; }
+  showToast('✓ Saved');
+  await openWorkspace(state.currentWorkspaceUserId);
+}
 
-    days.push({ date: dayStr, label: label, checkIns: checkIns, adhocHours: Math.round(hours * 4) / 4 });
-  }
-
-  var weekAgo = new Date(); weekAgo.setDate(weekAgo.getDate() - 7);
-  var projectsTouched = {};
-  dailyWork.filter(function (l) { return new Date(l['Date']) >= weekAgo; })
-    .forEach(function (l) { projectsTouched[l['Project ID']] = true; });
-
-  var totals = {
-    projectsTouched: Object.keys(projectsTouched).length,
-    totalHours: Math.round(adhoc.filter(function (a) { return new Date(a['Date']) >= weekAgo; })
-      .reduce(function (sum, a) { return sum + (parseFloat(a['Time Spent']) || 0); }, 0) * 4) / 4,
-    ideasAdded: ideas.filter(function (i) { return new Date(i['Created At']) >= weekAgo; }).length,
-    completed: projects.filter(function (p) {
-      return p['Status'] === 'Completed' && p['Actual Completion Date'] && new Date(p['Actual Completion Date']) >= weekAgo;
-    }).length
+/* ============================================================
+   ADD MODALS
+   ============================================================ */
+function openProjectModal() {
+  toggleAddPicker();
+  openModal(`
+    <div class="modal-header"><h2>📁 Add Project</h2><button class="modal-close" onclick="closeModal()">✕</button></div>
+    <div class="modal-body">
+      <div class="field"><label>Project Name</label><input id="pmName" placeholder="e.g. 3PL Cost Optimisation"></div>
+      <div class="field"><label>Description</label><textarea id="pmDesc" placeholder="What is this project about?"></textarea></div>
+      <div class="field"><label>Status</label>
+        <select id="pmStatus">${PROJECT_STATUSES.map(s => `<option value="${s}">${s==='Open'?'Open / To Be Picked':s}</option>`).join('')}</select>
+      </div>
+      <div class="field"><label>ETA</label><input type="date" id="pmEta"></div>
+      <div class="field"><label>Impact</label><input id="pmImpact" placeholder="e.g. Reduce cost"></div>
+      <div class="field"><label>Priority</label><select id="pmPriority">${PRIORITIES.map(p => `<option value="${p}">${p}</option>`).join('')}</select></div>
+      <div class="field"><label>Dependency</label><input id="pmDependency" placeholder="Optional"></div>
+      <div class="field"><label>Stakeholders</label><input id="pmStakeholders" placeholder="e.g. Ops team, Finance (optional)"></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="closeModal()">Cancel</button>
+      <button class="btn btn-primary" onclick="submitProjectModal()">Add Project</button>
+    </div>
+  `);
+}
+async function submitProjectModal() {
+  const project = {
+    projectName: val('pmName'), description: val('pmDesc'), status: val('pmStatus'),
+    eta: val('pmEta'), impact: val('pmImpact'), priority: val('pmPriority'),
+    dependency: val('pmDependency'), stakeholders: val('pmStakeholders')
   };
-
-  return { ok: true, data: { days: days, totals: totals } };
+  if (!project.projectName || !project.eta) { showToast('⚠️ Name and ETA are required'); return; }
+  const res = await apiCall('createProject', { project });
+  if (!res.ok) { showToast('⚠️ ' + res.error); return; }
+  closeModal(); showToast('✓ Project added — nice work');
+  await openWorkspace(state.currentWorkspaceUserId);
 }
 
-// ============================================================================
-// ADMIN: USER MANAGEMENT
-// ============================================================================
-
-function handleAddUser(body, currentUser) {
-  var u = body.user || {};
-  if (!u.name || !u.email) return { ok: false, error: 'Name and email are required.' };
-
-  var duplicate = getAllRows(SHEETS.USERS).some(function (row) {
-    return String(row['Work Email']).toLowerCase() === String(u.email).toLowerCase();
-  });
-  if (duplicate) return { ok: false, error: 'A user with that email already exists.' };
-
-  var id = generateNextId('U', SHEETS.USERS, 'User ID');
-  var avatar = AVATARS.indexOf(u.avatar) !== -1 ? u.avatar : AVATARS[Math.floor(Math.random() * AVATARS.length)];
-  var now = new Date();
-
-  var record = {
-    'User ID': id, 'Name': u.name, 'Work Email': u.email, 'Avatar': avatar,
-    'Role': 'User', 'Status': 'Active', 'Created At': now, 'Last Login': ''
-  };
-  appendRowObject(SHEETS.USERS, record);
-
-  var password = generateSixDigitPassword();
-  setUserPassword(id, password);
-  sendWelcomeEmail(record, password);
-
-  logActivity(id, 'Users', id, 'Created', '', '', u.name, currentUser['User ID']);
-  return { ok: true, data: { user: publicUser(record) } };
+function openIdeaModal() {
+  toggleAddPicker();
+  openModal(`
+    <div class="modal-header"><h2>💡 Add Idea</h2><button class="modal-close" onclick="closeModal()">✕</button></div>
+    <div class="modal-body">
+      <div class="field"><label>Type</label><select id="imType">${IDEA_TYPES.map(t => `<option value="${t}">${t}</option>`).join('')}</select></div>
+      <div class="field"><label>Idea Description</label><textarea id="imDesc" placeholder="What's the idea?"></textarea></div>
+      <div class="field"><label>Expected Impact</label><input id="imImpact" placeholder="What benefit could this create?"></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="closeModal()">Cancel</button>
+      <button class="btn btn-primary" onclick="submitIdeaModal()">Add Idea</button>
+    </div>
+  `);
+}
+async function submitIdeaModal() {
+  const idea = { type: val('imType'), description: val('imDesc'), expectedImpact: val('imImpact') };
+  if (!idea.description) { showToast('⚠️ Description is required'); return; }
+  const res = await apiCall('createIdea', { idea });
+  if (!res.ok) { showToast('⚠️ ' + res.error); return; }
+  closeModal(); showToast('✓ Idea captured');
+  await openWorkspace(state.currentWorkspaceUserId);
 }
 
-function handleUpdateUser(body, currentUser) {
-  var userId = body.userId;
-  var updates = body.updates || {};
-  var existing = findRowByField(SHEETS.USERS, 'User ID', userId);
-  if (!existing) return { ok: false, error: 'User not found.' };
-
-  var fieldMap = { name: 'Name', email: 'Work Email', avatar: 'Avatar' };
-  var before = {}, after = {}, sheetUpdates = {};
-  Object.keys(updates).forEach(function (key) {
-    var sheetField = fieldMap[key];
-    if (!sheetField) return;
-    before[sheetField] = existing[sheetField];
-    after[sheetField] = updates[key];
-    sheetUpdates[sheetField] = updates[key];
-  });
-
-  updateRowByIdField(SHEETS.USERS, 'User ID', userId, sheetUpdates);
-  logFieldDiffs(userId, 'Users', userId, before, after, currentUser['User ID']);
-
-  return { ok: true, data: { user: publicUser(findRowByField(SHEETS.USERS, 'User ID', userId)) } };
+function openAdhocModal() {
+  toggleAddPicker();
+  const today = new Date().toISOString().slice(0,10);
+  openModal(`
+    <div class="modal-header"><h2>⚡ Add Ad-hoc Work</h2><button class="modal-close" onclick="closeModal()">✕</button></div>
+    <div class="modal-body">
+      <div class="field"><label>Task</label><input id="amTask" placeholder="e.g. Fix dashboard issue"></div>
+      <div class="field"><label>Time Spent (hours)</label><input type="number" step="0.25" min="0" id="amTime" placeholder="1.5"></div>
+      <div class="field"><label>Description</label><textarea id="amDesc" placeholder="What did you do?"></textarea></div>
+      <div class="field"><label>Source</label><input id="amSource" placeholder="e.g. Manager request"></div>
+      <div class="field"><label>Date</label><input type="date" id="amDate" value="${today}"></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="closeModal()">Cancel</button>
+      <button class="btn btn-primary" onclick="submitAdhocModal()">Add Entry</button>
+    </div>
+  `);
+}
+async function submitAdhocModal() {
+  const adhoc = { task: val('amTask'), timeSpent: val('amTime'), description: val('amDesc'), source: val('amSource'), date: val('amDate') };
+  if (!adhoc.task || !adhoc.timeSpent) { showToast('⚠️ Task and time spent are required'); return; }
+  const res = await apiCall('createAdhoc', { adhoc });
+  if (!res.ok) { showToast('⚠️ ' + res.error); return; }
+  closeModal(); showToast('✓ Logged — thanks for keeping this updated');
+  await openWorkspace(state.currentWorkspaceUserId);
 }
 
-function handleDeactivateUser(body, currentUser) {
-  var userId = body.userId;
-  var existing = findRowByField(SHEETS.USERS, 'User ID', userId);
-  if (!existing) return { ok: false, error: 'User not found.' };
-  updateRowByIdField(SHEETS.USERS, 'User ID', userId, { 'Status': 'Inactive' });
-  logActivity(userId, 'Users', userId, 'Deactivated', 'Status', 'Active', 'Inactive', currentUser['User ID']);
-  return { ok: true, data: {} };
+/* ============================================================
+   ADMIN: TEAM MANAGEMENT
+   ============================================================ */
+async function openTeamManagement() {
+  toggleUserMenu();
+  renderLoading();
+  const res = await apiCall('getAllUsers', {});
+  if (!res.ok) { renderError(res.error); return; }
+  renderTeamManagement(res.data.users);
 }
 
-function handleReactivateUser(body, currentUser) {
-  var userId = body.userId;
-  var existing = findRowByField(SHEETS.USERS, 'User ID', userId);
-  if (!existing) return { ok: false, error: 'User not found.' };
-  updateRowByIdField(SHEETS.USERS, 'User ID', userId, { 'Status': 'Active' });
-  logActivity(userId, 'Users', userId, 'Reactivated', 'Status', 'Inactive', 'Active', currentUser['User ID']);
-  return { ok: true, data: {} };
+function renderTeamManagement(users) {
+  const rows = users.map(u => `
+    <tr>
+      <td style="font-family:var(--font-body);font-size:18px;">${u.avatar}</td>
+      <td class="name-cell">${escapeHtml(u.name)}</td>
+      <td style="font-family:var(--font-body);">${escapeHtml(u.email)}</td>
+      <td><span class="role-badge role-${u.role}">${u.role}</span></td>
+      <td class="status-${u.status}" style="font-family:var(--font-body);">${u.status}</td>
+      <td style="display:flex;gap:6px;">
+        <button class="btn btn-ghost btn-sm" onclick="openEditUserModal('${u.userId}','${escapeAttr(u.name)}','${escapeAttr(u.email)}','${u.avatar}')">Edit</button>
+        <button class="btn btn-ghost btn-sm" onclick="adminResetPw('${u.userId}','${escapeAttr(u.email)}')">Reset PW</button>
+        ${u.status === 'Active'
+          ? `<button class="btn btn-danger btn-sm" onclick="deactivateUser('${u.userId}')">Deactivate</button>`
+          : `<button class="btn btn-primary btn-sm" onclick="reactivateUser('${u.userId}')">Reactivate</button>`}
+      </td>
+    </tr>`).join('');
+
+  document.getElementById('mainContainer').innerHTML = `
+    <button class="back-link" onclick="goHome()">← Back to Cumin</button>
+    <div class="section-title">👑 Team Management <button class="btn btn-warm btn-sm" onclick="openAddUserModal()">+ Add Team Member</button></div>
+    <div class="mgmt-table-wrap">
+      <table>
+        <thead><tr><th></th><th>Name</th><th>Email</th><th>Role</th><th>Status</th><th>Actions</th></tr></thead>
+        <tbody>${rows}</tbody>
+      </table>
+    </div>
+  `;
 }
 
-function handleGetAllUsers(body, currentUser) {
-  var users = getAllRows(SHEETS.USERS).map(function (u) {
-    return {
-      userId: u['User ID'], name: u['Name'], email: u['Work Email'],
-      avatar: u['Avatar'], role: u['Role'], status: u['Status'],
-      createdAt: u['Created At'], lastLogin: u['Last Login']
-    };
-  });
-  return { ok: true, data: { users: users } };
+function openAddUserModal() {
+  const avatarOptions = Object.keys(AVATAR_COLORS).map(a => `<option value="${a}">${a}</option>`).join('');
+  openModal(`
+    <div class="modal-header"><h2>Add Team Member</h2><button class="modal-close" onclick="closeModal()">✕</button></div>
+    <div class="modal-body">
+      <div class="field"><label>Name</label><input id="auName" placeholder="Full name"></div>
+      <div class="field"><label>Work Email</label><input type="email" id="auEmail" placeholder="name@company.com"></div>
+      <div class="field"><label>Avatar</label><select id="auAvatar">${avatarOptions}</select></div>
+      <p style="font-size:12.5px;color:var(--ink-soft);">A random 6-digit password will be generated and emailed to them automatically.</p>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="closeModal()">Cancel</button>
+      <button class="btn btn-primary" onclick="submitAddUser()">Create User</button>
+    </div>
+  `);
+}
+async function submitAddUser() {
+  const user = { name: val('auName'), email: val('auEmail'), avatar: val('auAvatar') };
+  if (!user.name || !user.email) { showToast('⚠️ Name and email required'); return; }
+  const res = await apiCall('addUser', { user });
+  if (!res.ok) { showToast('⚠️ ' + res.error); return; }
+  closeModal(); showToast('✓ Welcome email sent — they\'re all set');
+  openTeamManagement();
 }
 
-function handleAdminResetPassword(body, currentUser) {
-  var userId = body.userId;
-  var existing = findRowByField(SHEETS.USERS, 'User ID', userId);
-  if (!existing) return { ok: false, error: 'User not found.' };
-  var password = generateSixDigitPassword();
-  setUserPassword(userId, password);
-  sendPasswordResetEmail(existing, password);
-  logActivity(userId, 'Users', userId, 'Password Reset', '', '', '', currentUser['User ID']);
-  return { ok: true, data: { message: 'New password emailed to ' + existing['Work Email'] } };
+function openEditUserModal(userId, name, email, avatar) {
+  const avatarOptions = Object.keys(AVATAR_COLORS).map(a => `<option value="${a}" ${a===avatar?'selected':''}>${a}</option>`).join('');
+  openModal(`
+    <div class="modal-header"><h2>Edit ${escapeHtml(name)}</h2><button class="modal-close" onclick="closeModal()">✕</button></div>
+    <div class="modal-body">
+      <div class="field"><label>Name</label><input id="euName" value="${escapeAttr(name)}"></div>
+      <div class="field"><label>Work Email</label><input id="euEmail" value="${escapeAttr(email)}"></div>
+      <div class="field"><label>Avatar</label><select id="euAvatar">${avatarOptions}</select></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="closeModal()">Cancel</button>
+      <button class="btn btn-primary" onclick="submitEditUser('${userId}')">Save Changes</button>
+    </div>
+  `);
+}
+async function submitEditUser(userId) {
+  const updates = { name: val('euName'), email: val('euEmail'), avatar: val('euAvatar') };
+  const res = await apiCall('updateUser', { userId, updates });
+  if (!res.ok) { showToast('⚠️ ' + res.error); return; }
+  closeModal(); showToast('✓ Updated');
+  openTeamManagement();
 }
 
-// ============================================================================
-// DAILY SNAPSHOT
-// ============================================================================
-
-function createDailySnapshot() {
-  var tz = Session.getScriptTimeZone();
-  var todayStr = Utilities.formatDate(new Date(), tz, 'yyyy-MM-dd');
-  var projects = getAllRows(SHEETS.PROJECTS);
-
-  projects.forEach(function (p) {
-    var info = computeProjectStatusInfo(p);
-    appendRowObject(SHEETS.SNAPSHOTS, {
-      'Snapshot Date': todayStr,
-      'Project ID': p['Project ID'],
-      'Owner User ID': p['Owner User ID'],
-      'Status': p['Status'],
-      'Display Status': info.displayStatus,
-      'Zone': info.zone,
-      'Days Remaining': info.daysRemaining
-    });
-  });
-  Logger.log('Daily snapshot created for ' + projects.length + ' projects.');
+async function deactivateUser(userId) {
+  if (!confirm('Deactivate this user? Their history stays intact and they can be reactivated later.')) return;
+  const res = await apiCall('deactivateUser', { userId });
+  showToast(res.ok ? '✓ Deactivated' : '⚠️ ' + res.error);
+  openTeamManagement();
 }
+async function reactivateUser(userId) {
+  const res = await apiCall('reactivateUser', { userId });
+  showToast(res.ok ? '✓ Reactivated' : '⚠️ ' + res.error);
+  openTeamManagement();
+}
+async function adminResetPw(userId, email) {
+  if (!confirm('Send a new password to ' + email + '?')) return;
+  const res = await apiCall('adminResetPassword', { userId });
+  showToast(res.ok ? '✓ New password emailed' : '⚠️ ' + res.error);
+}
+
+/* ============================================================
+   UTILS
+   ============================================================ */
+function togglePasswordVisibility(inputId, btn) {
+  const input = document.getElementById(inputId);
+  if (input.type === 'password') {
+    input.type = 'text';
+    btn.textContent = '🙈';
+    btn.setAttribute('aria-label', 'Hide password');
+  } else {
+    input.type = 'password';
+    btn.textContent = '👁';
+    btn.setAttribute('aria-label', 'Show password');
+  }
+}
+
+function val(id) { return document.getElementById(id).value.trim(); }
+function escapeHtml(str) {
+  if (str === null || str === undefined) return '';
+  return String(str).replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
+}
+function escapeAttr(str) { return escapeHtml(str).replace(/"/g, '&quot;'); }
+function formatDateInput(dateVal) {
+  if (!dateVal) return '';
+  const d = new Date(dateVal);
+  if (isNaN(d)) return '';
+  return d.toISOString().slice(0,10);
+}
+function formatDateDisplay(dateVal) {
+  if (!dateVal) return '—';
+  const d = new Date(dateVal);
+  if (isNaN(d)) return '—';
+  return d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
+}
+function formatDateTimeDisplay(dateVal) {
+  if (!dateVal) return '—';
+  const d = new Date(dateVal);
+  if (isNaN(d)) return '—';
+  return d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' }) + ' — ' +
+         d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+}
+</script>
+</body>
+</html>
