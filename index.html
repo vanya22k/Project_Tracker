@@ -549,9 +549,10 @@ tr.total-row td{font-weight:800;background:var(--surface-alt);}
    ============================================================ */
 const API_URL = "https://script.google.com/macros/s/AKfycbxcdh-rAomBSsm3X0FCWR-nacTPG_--aTEHhAyI3zWYHsA8nRonI72A43Uhut63LzqsdA/exec";
 
-const PROJECT_STATUSES = ['Open', 'In Progress', 'On Hold', 'Completed'];
+const PROJECT_STATUSES = ['Open', 'In Progress', 'On Hold', 'Delayed', 'Completed'];
 const IDEA_TYPES = ['Visibility', 'Cost', 'Process Improvement', 'CX'];
 const PRIORITIES = ['P0', 'P1', 'P2'];
+const UPDATE_TYPES = ['Update Progress', 'Update Delay', 'Update Deprioritization'];
 
 const AVATAR_COLORS = {
   '🦊':'#FF8A4C','🐼':'#5B6B79','🐸':'#2FAE6B','🐯':'#FFA53E','🐨':'#8E9AAF',
@@ -751,7 +752,7 @@ function showDefaulterPopupIfNeeded(alerts) {
     <div class="modal-header"><h2>⚠️ Deadline Report</h2><button class="modal-close" onclick="closeModal()">✕</button></div>
     <div class="modal-body">
       <p style="color:var(--ink-soft);font-size:13.5px;line-height:1.6;">
-        The following team member${overdue.length>1?'s have':' has'} exceeded their committed ETA and ${overdue.length>1?'are':'is'} currently flagged as in default of the agreed timeline:
+        The following team member${overdue.length>1?'s have':' has'} exceeded their committed ETD and ${overdue.length>1?'are':'is'} currently flagged as in default of the agreed timeline:
       </p>
       <ul style="font-size:13.5px;padding-left:20px;">${list}</ul>
     </div>
@@ -978,7 +979,7 @@ function renderWorkspace() {
           <button class="btn btn-primary" onclick="toggleAddPicker()">+ Add</button>
           <div id="addPickerDropdown" class="hidden" style="position:absolute;top:calc(100% + 8px);right:0;z-index:50;width:260px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-md);box-shadow:var(--shadow-md);padding:10px;">
             <div class="type-picker">
-              <button onclick="openProjectModal()"><span class="tp-icon">📁</span><span>Project<span class="tp-sub">A formal piece of work with an ETA</span></span></button>
+              <button onclick="openProjectModal()"><span class="tp-icon">📁</span><span>Project<span class="tp-sub">A formal piece of work with an ETD</span></span></button>
               <button onclick="openIdeaModal()"><span class="tp-icon">💡</span><span>Idea<span class="tp-sub">Something worth exploring later</span></span></button>
               <button onclick="openAdhocModal()"><span class="tp-icon">⚡</span><span>Ad-hoc<span class="tp-sub">Unplanned work you did today</span></span></button>
             </div>
@@ -1093,7 +1094,7 @@ function renderZoneBar(p) {
   }
   const markerPos = p.zone === 'green' ? 20 : p.zone === 'amber' ? 55 : 90;
   const label = p.displayStatus === 'Delayed'
-    ? `${Math.abs(p.daysRemaining)} day(s) overdue`
+    ? (p.daysRemaining < 0 ? `${Math.abs(p.daysRemaining)} day(s) overdue` : `⚠️ Flagged at risk — ${p.daysRemaining} day(s) left`)
     : `${p.daysRemaining} day(s) remaining`;
   return `<div class="zonebar-wrap">
     <div class="zonebar" style="position:relative;">
@@ -1118,12 +1119,12 @@ function renderProjectCard(p, canEdit) {
   const editControls = canEdit ? `
     <div class="inline-edit-row">
       <select class="inline-select" onchange="updateProjectField('${p.projectId}','status',this.value)">
-        ${PROJECT_STATUSES.map(s => `<option value="${s}" ${p.status===s?'selected':''}>${s==='Open'?'Open / To Be Picked':s}</option>`).join('')}
+        ${PROJECT_STATUSES.map(s => `<option value="${s}" ${p.status===s?'selected':''}>${s==='Open'?'Open / To Be Picked':s==='Delayed'?'Delayed (at risk of missing ETD)':s}</option>`).join('')}
       </select>
       ${isAdmin
         ? `<input type="date" class="inline-date" value="${formatDateInput(p.eta)}" onchange="updateProjectField('${p.projectId}','eta',this.value)">`
-        : `<span class="pill pill-neutral" title="Only Admin can change the deadline">🔒 ETA: ${formatDateDisplay(p.eta)}</span>`}
-      ${p.status==='Completed' ? `<input type="date" class="inline-date" value="${formatDateInput(p.actualCompletionDate)}" placeholder="Completion date" onchange="updateProjectField('${p.projectId}','actualCompletionDate',this.value)">` : ''}
+        : `<span class="pill pill-neutral" title="Only Admin can change the deadline">🔒 ETD: ${formatDateDisplay(p.eta)}</span>`}
+      ${p.status==='Completed' ? `<span class="pill pill-green" title="Auto-filled when marked Completed">✓ Completed ${formatDateDisplay(p.actualCompletionDate)}</span>` : ''}
       <button class="btn btn-ghost btn-sm" onclick="openEditProjectModal('${p.projectId}')">Edit details</button>
     </div>` : '';
 
@@ -1140,8 +1141,8 @@ function renderProjectCard(p, canEdit) {
     <div class="item-desc">${escapeHtml(p.description || '')}</div>
     ${renderZoneBar(p)}
     <div class="meta-row">
-      <div class="meta-item">ETA: <b>${formatDateDisplay(p.eta)}</b></div>
-      ${p.impact ? `<div class="meta-item">Impact: <b>${escapeHtml(p.impact)}</b></div>` : ''}
+      <div class="meta-item">ETD: <b>${formatDateDisplay(p.eta)}</b></div>
+      ${p.impact ? `<div class="meta-item">Scope: <b>${escapeHtml(p.impact)}</b></div>` : ''}
       ${p.dependency ? `<div class="meta-item">Dependency: <b>${escapeHtml(p.dependency)}</b></div>` : ''}
     </div>
     ${renderStakeholders(p.stakeholders)}
@@ -1158,13 +1159,19 @@ function openEditProjectModal(projectId) {
     <div class="modal-header"><h2>Edit Project Details</h2><button class="modal-close" onclick="closeModal()">✕</button></div>
     <div class="modal-body">
       <div class="field"><label>Project Name</label><input id="epName" value="${escapeAttr(p.projectName)}"></div>
-      <div class="field"><label>Description</label><textarea id="epDesc">${escapeHtml(p.description || '')}</textarea></div>
-      <div class="field"><label>Impact</label><input id="epImpact" value="${escapeAttr(p.impact || '')}"></div>
+      <div class="field"><label>Objective *</label><textarea id="epDesc" required>${escapeHtml(p.description || '')}</textarea></div>
+      <div class="field"><label>Scope *</label><input id="epImpact" value="${escapeAttr(p.impact || '')}" required></div>
       <div class="field"><label>Priority</label><select id="epPriority">${PRIORITIES.map(pr => `<option value="${pr}" ${p.priority===pr?'selected':''}>${pr}</option>`).join('')}</select></div>
       <div class="field"><label>Dependency</label><input id="epDependency" value="${escapeAttr(p.dependency || '')}"></div>
       <div class="field"><label>Stakeholders</label><input id="epStakeholders" value="${escapeAttr(p.stakeholders || '')}" placeholder="e.g. Ops team, Finance (optional)"></div>
+      ${p.status === 'Completed' ? `
       <div class="field">
-        <label>ETA (Deadline)</label>
+        <label>Actual Completion Date</label>
+        <input type="date" id="epCompletionDate" value="${formatDateInput(p.actualCompletionDate)}">
+        <p style="font-size:12px;color:var(--ink-faint);margin-top:6px;">This gets filled in automatically when a project is marked Completed — only change it if it needs correcting.</p>
+      </div>` : ''}
+      <div class="field">
+        <label>ETD (Deadline)</label>
         ${isAdmin
           ? `<input type="date" id="epEta" value="${formatDateInput(p.eta)}">`
           : `<input value="${formatDateDisplay(p.eta)}" disabled style="opacity:.6;cursor:not-allowed;">
@@ -1183,11 +1190,15 @@ async function submitEditProject(projectId) {
     projectName: val('epName'), description: val('epDesc'), impact: val('epImpact'),
     priority: val('epPriority'), dependency: val('epDependency'), stakeholders: val('epStakeholders')
   };
+  const completionEl = document.getElementById('epCompletionDate');
+  if (completionEl) updates.actualCompletionDate = completionEl.value;
   if (state.user.role === 'Admin') {
     const etaEl = document.getElementById('epEta');
     if (etaEl) updates.eta = etaEl.value;
   }
   if (!updates.projectName) { showToast('⚠️ Project name is required'); return; }
+  if (!updates.description) { showToast('⚠️ Objective is required'); return; }
+  if (!updates.impact) { showToast('⚠️ Scope is required'); return; }
   const res = await apiCall('updateProject', { projectId, updates });
   if (!res.ok) { showToast('⚠️ ' + res.error); return; }
   closeModal(); showToast('✓ Project details updated');
@@ -1198,16 +1209,17 @@ function renderCheckinRow(p) {
   const logged = !!p.loggedToday;
   return `<div class="checkin-row ${logged ? 'logged' : ''}">
     <input type="checkbox" id="checkin-${p.projectId}" ${logged ? 'checked' : ''} onchange="onCheckinToggle('${p.projectId}', this)">
-    <label class="checkin-label" for="checkin-${p.projectId}">${logged ? '✓ Logged work on this today' : 'I worked on this project today'}</label>
+    <label class="checkin-label" for="checkin-${p.projectId}">${logged ? `✓ Logged: ${escapeHtml(p.todaysLogType || '')}` : 'I worked on this project today'}</label>
     ${logged ? `<button class="link-btn" style="margin-left:auto;font-size:12px;" onclick="openProjectCheckinEdit('${p.projectId}', event)">Edit</button>` : ''}
   </div>
-  ${logged && p.todaysLogDescription ? `<div class="checkin-note">"${escapeHtml(p.todaysLogDescription)}"</div>` : ''}`;
+  ${logged && p.todaysLogDescription ? `<div class="checkin-note">"${escapeHtml(p.todaysLogDescription)}"</div>` : ''}
+  <button class="link-btn" style="font-size:12px;margin-top:8px;" onclick="openProjectLogsModal('${p.projectId}', event)">📜 View log history</button>`;
 }
 
 function onCheckinToggle(projectId, checkbox) {
   if (checkbox.checked) {
     checkbox.checked = false; // don't flip visually until saved
-    openCheckinModal(projectId, '');
+    openCheckinModal(projectId, '', '');
   } else {
     checkbox.checked = true; // don't flip visually until confirmed
     if (!confirm("Remove today's check-in for this project?")) { checkbox.checked = true; return; }
@@ -1219,22 +1231,35 @@ function openProjectCheckinEdit(projectId, event) {
   event.stopPropagation();
   const d = state.workspaceData;
   const project = d.projects.find(p => p.projectId === projectId);
-  openCheckinModal(projectId, project ? project.todaysLogDescription : '');
+  openCheckinModal(projectId, project ? project.todaysLogType : '', project ? project.todaysLogDescription : '');
 }
 
-function openCheckinModal(projectId, existingText) {
+function openCheckinModal(projectId, existingType, existingText) {
   openModal(`
-    <div class="modal-header"><h2>What did you work on?</h2><button class="modal-close" onclick="closeModal()">✕</button></div>
+    <div class="modal-header"><h2>Log today's update</h2><button class="modal-close" onclick="closeModal()">✕</button></div>
     <div class="modal-body">
-      <div class="field"><label>Quick explanation (optional)</label><textarea id="checkinDesc" placeholder="e.g. Followed up with vendor, updated the cost sheet...">${escapeHtml(existingText || '')}</textarea></div>
-      <p style="font-size:12px;color:var(--ink-faint);margin-top:-8px;">Leave it blank if you just want to log that you worked on this today — a note just helps everyone stay in the loop.</p>
+      <div class="field">
+        <label>What kind of update? *</label>
+        <select id="checkinType" onchange="onCheckinTypeChange()">
+          <option value="">Select...</option>
+          ${UPDATE_TYPES.map(t => `<option value="${t}" ${existingType===t?'selected':''}>${t}</option>`).join('')}
+        </select>
+      </div>
+      <div id="checkinReasonWrap" class="field ${existingType ? '' : 'hidden'}">
+        <label>Reason *</label>
+        <textarea id="checkinDesc" placeholder="What happened? This is required.">${escapeHtml(existingText || '')}</textarea>
+      </div>
     </div>
     <div class="modal-footer">
       <button class="btn btn-ghost" onclick="closeModal()">Cancel</button>
       <button class="btn btn-primary" onclick="submitCheckin('${projectId}')">${existingText ? 'Save changes' : 'Log it'}</button>
     </div>
   `);
-  setTimeout(() => document.getElementById('checkinDesc') && document.getElementById('checkinDesc').focus(), 50);
+}
+
+function onCheckinTypeChange() {
+  const type = document.getElementById('checkinType').value;
+  document.getElementById('checkinReasonWrap').classList.toggle('hidden', !type);
 }
 
 const JUNK_ANSWERS = ['na', 'n/a', 'not applicable', 'none', 'nil', '-', 'nothing',
@@ -1246,9 +1271,12 @@ function isJunkDescription(text) {
 }
 
 async function submitCheckin(projectId) {
+  const updateType = val('checkinType');
   const description = val('checkinDesc');
-  if (description && isJunkDescription(description)) { showToast('⚠️ Leave it blank or write a real explanation'); return; }
-  const res = await apiCall('logDailyWork', { projectId, description });
+  if (!updateType) { showToast('⚠️ Select what kind of update this is'); return; }
+  if (!description) { showToast('⚠️ A reason is required'); return; }
+  if (isJunkDescription(description)) { showToast('⚠️ Please describe what actually happened'); return; }
+  const res = await apiCall('logDailyWork', { projectId, updateType, description });
   if (!res.ok) { showToast('⚠️ ' + res.error); return; }
   closeModal(); showToast('✓ Logged — thanks for keeping this updated');
   await openWorkspace(state.currentWorkspaceUserId);
@@ -1259,6 +1287,36 @@ async function removeCheckin(projectId) {
   if (!res.ok) { showToast('⚠️ ' + res.error); return; }
   showToast('✓ Removed');
   await openWorkspace(state.currentWorkspaceUserId);
+}
+
+const UPDATE_TYPE_COLORS = { 'Update Progress': 'pill-green', 'Update Delay': 'pill-red', 'Update Deprioritization': 'pill-amber' };
+
+async function openProjectLogsModal(projectId, event) {
+  if (event) event.stopPropagation();
+  openModal(`
+    <div class="modal-header"><h2>Log History</h2><button class="modal-close" onclick="closeModal()">✕</button></div>
+    <div class="modal-body" id="projectLogsBody">
+      <div style="text-align:center;color:var(--ink-faint);padding:20px;">Loading…</div>
+    </div>
+  `);
+  const res = await apiCall('getProjectLogs', { projectId });
+  const body = document.getElementById('projectLogsBody');
+  if (!body) return; // modal was closed before this resolved
+  if (!res.ok) { body.innerHTML = `<div class="empty-state">⚠️ ${escapeHtml(res.error)}</div>`; return; }
+  const logs = res.data.logs;
+  if (logs.length === 0) {
+    body.innerHTML = '<div class="empty-state">No updates logged yet.</div>';
+    return;
+  }
+  body.innerHTML = `<div class="card-list">${logs.map(l => `
+    <div class="item-card" style="padding:14px 16px;">
+      <div class="item-card-top" style="margin-bottom:4px;">
+        <span class="pill ${UPDATE_TYPE_COLORS[l.type] || 'pill-neutral'}">${escapeHtml(l.type || '')}</span>
+        <span style="font-family:var(--font-mono);font-size:11.5px;color:var(--ink-faint);">${formatDateDisplay(l.date)}${l.isToday ? ' · Today' : ''}</span>
+      </div>
+      <div style="font-size:13.5px;color:var(--ink-soft);">${escapeHtml(l.description)}</div>
+      ${l.isToday ? `<button class="link-btn" style="font-size:12px;margin-top:8px;" onclick="closeModal();openProjectCheckinEdit('${projectId}', {stopPropagation(){}})">Edit today's entry</button>` : ''}
+    </div>`).join('')}</div>`;
 }
 
 function renderIdeaCard(i, canEdit) {
@@ -1310,12 +1368,12 @@ function openProjectModal() {
     <div class="modal-header"><h2>📁 Add Project</h2><button class="modal-close" onclick="closeModal()">✕</button></div>
     <div class="modal-body">
       <div class="field"><label>Project Name</label><input id="pmName" placeholder="e.g. 3PL Cost Optimisation"></div>
-      <div class="field"><label>Description</label><textarea id="pmDesc" placeholder="What is this project about?"></textarea></div>
+      <div class="field"><label>Objective *</label><textarea id="pmDesc" placeholder="What is this project meant to achieve?" required></textarea></div>
       <div class="field"><label>Status</label>
-        <select id="pmStatus">${PROJECT_STATUSES.map(s => `<option value="${s}">${s==='Open'?'Open / To Be Picked':s}</option>`).join('')}</select>
+        <select id="pmStatus">${PROJECT_STATUSES.filter(s => s !== 'Delayed').map(s => `<option value="${s}">${s==='Open'?'Open / To Be Picked':s}</option>`).join('')}</select>
       </div>
-      <div class="field"><label>ETA</label><input type="date" id="pmEta"></div>
-      <div class="field"><label>Impact</label><input id="pmImpact" placeholder="e.g. Reduce cost"></div>
+      <div class="field"><label>ETD</label><input type="date" id="pmEta"></div>
+      <div class="field"><label>Scope *</label><input id="pmImpact" placeholder="e.g. What's in/out of scope" required></div>
       <div class="field"><label>Priority</label><select id="pmPriority">${PRIORITIES.map(p => `<option value="${p}">${p}</option>`).join('')}</select></div>
       <div class="field"><label>Dependency</label><input id="pmDependency" placeholder="Optional"></div>
       <div class="field"><label>Stakeholders</label><input id="pmStakeholders" placeholder="e.g. Ops team, Finance (optional)"></div>
@@ -1332,7 +1390,9 @@ async function submitProjectModal() {
     eta: val('pmEta'), impact: val('pmImpact'), priority: val('pmPriority'),
     dependency: val('pmDependency'), stakeholders: val('pmStakeholders')
   };
-  if (!project.projectName || !project.eta) { showToast('⚠️ Name and ETA are required'); return; }
+  if (!project.projectName || !project.eta) { showToast('⚠️ Name and ETD are required'); return; }
+  if (!project.description) { showToast('⚠️ Objective is required'); return; }
+  if (!project.impact) { showToast('⚠️ Scope is required'); return; }
   const res = await apiCall('createProject', { project });
   if (!res.ok) { showToast('⚠️ ' + res.error); return; }
   closeModal(); showToast('✓ Project added — nice work');
