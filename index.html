@@ -1,3 +1,8 @@
+
+
+
+
+
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -354,7 +359,7 @@ tr.total-row td{font-weight:800;background:var(--surface-alt);}
 /* ============================================================
    CONFIG
    ============================================================ */
-const API_URL = 'https://script.google.com/macros/s/AKfycbxcdh-rAomBSsm3X0FCWR-nacTPG_--aTEHhAyI3zWYHsA8nRonI72A43Uhut63LzqsdA/exec';
+const API_URL = 'https://script.google.com/macros/s/AKfycbySzb8o3apNUO7Mxkb_2TGtmrAp2tBrzTR9uUHBjLQq_00WYrI3A6Iv4zix6f73zMkw/exec';
 
 const PROJECT_STATUSES = ['Open','In Progress','On Hold','Delayed','Completed'];
 const IDEA_TYPES       = ['Visibility','Cost','Process Improvement','CX'];
@@ -386,6 +391,30 @@ const state = {
    API — single fetch helper, text/plain avoids CORS preflight
    ============================================================ */
 async function apiCall(action, payload = {}) {
+  const body = { action, ...payload };
+  if (action !== 'login' && action !== 'forgotPassword') body.token = state.token;
+
+  try {
+    const res = await fetch(API_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+      body: JSON.stringify(body)
+    });
+
+    if (!res.ok) {
+      throw new Error('Server returned HTTP ' + res.status);
+    }
+
+    return await res.json();
+  } catch (err) {
+    return {
+      ok: false,
+      error: err && err.message
+        ? err.message
+        : 'Unable to connect to the Cumin server.'
+    };
+  }
+}) {
   payload.action = action;
   if (state.token) payload.token = state.token;
   try {
