@@ -580,15 +580,23 @@ async function apiCall(action, payload) {
   payload = payload || {};
   payload.action = action;
   if (state.token) payload.token = state.token;
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 20000);
   try {
     const res = await fetch(API_URL, {
       method: 'POST',
       headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-      body: JSON.stringify(payload)
+      body: JSON.stringify(payload),
+      signal: controller.signal
     });
+    clearTimeout(timeoutId);
     return await res.json();
   } catch (err) {
-    return { ok: false, error: 'Network error — check your connection or the API URL.' };
+    clearTimeout(timeoutId);
+    if (err.name === 'AbortError') {
+      return { ok: false, error: 'Request timed out after 20s — the server may be slow or unreachable.' };
+    }
+    return { ok: false, error: 'Network error (' + (err.message || err.name || 'unknown') + ') — check your connection or the API URL.' };
   }
 }
 
@@ -681,6 +689,7 @@ async function enterApp() {
   const res = await apiCall('getHomeBundle', {});
   if (!res.ok || !res.data.home) { renderError(res.error || 'Could not load homepage.'); return; }
   homeDataCache = res.data.home;
+  homeSummaryCache = res.data.summary;
 
   if (res.data.notifications) {
     notifCache = res.data.notifications.alerts;
@@ -712,7 +721,8 @@ async function toggleNotifDropdown() {
   document.getElementById('userMenu').classList.add('hidden');
   if (!el.classList.contains('hidden')) { el.classList.add('hidden'); return; }
   el.classList.remove('hidden');
-  await refreshNotifications();
+  renderNotifDropdown(); // show cached instantly (already populated from getHomeBundle)
+  await refreshNotifications(); // then quietly refresh in the background
   renderNotifDropdown();
 }
 
@@ -819,6 +829,7 @@ function closeModal() {
    HOME VIEW
    ============================================================ */
 let homeDataCache = null;
+let homeSummaryCache = null;
 async function goHome() {
   state.currentWorkspaceUserId = null;
   toggleUserMenu(); // closes if open
@@ -826,6 +837,7 @@ async function goHome() {
   const res = await apiCall('getHomeBundle', {});
   if (!res.ok || !res.data.home) { renderError(res.error || 'Could not load homepage.'); return; }
   homeDataCache = res.data.home;
+  homeSummaryCache = res.data.summary;
 
   if (res.data.notifications) {
     notifCache = res.data.notifications.alerts;
@@ -931,8 +943,7 @@ function renderHome(data, summary) {
 
 function setHomeFilter(f) {
   state.homeFilter = f;
-  if (homeDataCache) renderHome(homeDataCache, null);
-  goHome(); // re-fetch to also refresh summary table cleanly
+  if (homeDataCache) renderHome(homeDataCache, homeSummaryCache);
 }
 
 /* ============================================================
@@ -1131,7 +1142,7 @@ function renderProjectCard(p, canEdit) {
   return `<div class="item-card">
     <div class="item-card-top">
       <div>
-        <div class="item-title">${escapeHtml(p.projectName)}</div>
+        <div class="item-title" ${canEdit ? `onclick="openProjectLogPage('${p.projectId}')" style="cursor:pointer;text-decoration:underline;text-decoration-color:transparent;transition:text-decoration-color .15s;" onmouseover="this.style.textDecorationColor='var(--ink-faint)'" onmouseout="this.style.textDecorationColor='transparent'"` : ''}>${escapeHtml(p.projectName)}</div>
       </div>
       <div style="display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end;">
         <span class="pill ${pillClassForDisplayStatus(p.displayStatus)}">${p.displayStatus}</span>
@@ -1202,7 +1213,7 @@ async function submitEditProject(projectId) {
   const res = await apiCall('updateProject', { projectId, updates });
   if (!res.ok) { showToast('⚠️ ' + res.error); return; }
   closeModal(); showToast('✓ Project details updated');
-  await openWorkspace(state.currentWorkspaceUserId);
+  patchLocalProject(res.data.project);
 }
 
 function renderCheckinRow(p) {
@@ -1212,8 +1223,7 @@ function renderCheckinRow(p) {
     <label class="checkin-label" for="checkin-${p.projectId}">${logged ? `✓ Logged: ${escapeHtml(p.todaysLogType || '')}` : 'I worked on this project today'}</label>
     ${logged ? `<button class="link-btn" style="margin-left:auto;font-size:12px;" onclick="openProjectCheckinEdit('${p.projectId}', event)">Edit</button>` : ''}
   </div>
-  ${logged && p.todaysLogDescription ? `<div class="checkin-note">"${escapeHtml(p.todaysLogDescription)}"</div>` : ''}
-  <button class="link-btn" style="font-size:12px;margin-top:8px;" onclick="openProjectLogsModal('${p.projectId}', event)">📜 View log history</button>`;
+  ${logged && p.todaysLogDescription ? `<div class="checkin-note">"${escapeHtml(p.todaysLogDescription)}"</div>` : ''}`;
 }
 
 function onCheckinToggle(projectId, checkbox) {
@@ -1279,43 +1289,43 @@ async function submitCheckin(projectId) {
   const res = await apiCall('logDailyWork', { projectId, updateType, description });
   if (!res.ok) { showToast('⚠️ ' + res.error); return; }
   closeModal(); showToast('✓ Logged — thanks for keeping this updated');
-  await openWorkspace(state.currentWorkspaceUserId);
+  patchLocalProject({ projectId, loggedToday: true, todaysLogType: updateType, todaysLogDescription: description });
 }
 
 async function removeCheckin(projectId) {
   const res = await apiCall('deleteDailyWork', { projectId });
   if (!res.ok) { showToast('⚠️ ' + res.error); return; }
   showToast('✓ Removed');
-  await openWorkspace(state.currentWorkspaceUserId);
+  patchLocalProject({ projectId, loggedToday: false, todaysLogType: '', todaysLogDescription: '' });
 }
 
 const UPDATE_TYPE_COLORS = { 'Update Progress': 'pill-green', 'Update Delay': 'pill-red', 'Update Deprioritization': 'pill-amber' };
 
-async function openProjectLogsModal(projectId, event) {
-  if (event) event.stopPropagation();
-  openModal(`
-    <div class="modal-header"><h2>Log History</h2><button class="modal-close" onclick="closeModal()">✕</button></div>
-    <div class="modal-body" id="projectLogsBody">
-      <div style="text-align:center;color:var(--ink-faint);padding:20px;">Loading…</div>
-    </div>
-  `);
+async function openProjectLogPage(projectId) {
+  const project = state.workspaceData ? state.workspaceData.projects.find(p => p.projectId === projectId) : null;
+  state.currentProjectLogId = projectId;
+  document.getElementById('mainContainer').innerHTML = `
+    <button class="back-link" onclick="renderWorkspace()">← Back to ${state.workspaceData ? escapeHtml(state.workspaceData.user.name) : 'workspace'}'s Workspace</button>
+    <div class="section-title">📜 ${project ? escapeHtml(project.projectName) : 'Project'} — Log History</div>
+    <div id="projectLogPageBody" style="padding:40px;text-align:center;color:var(--ink-faint);">Loading…</div>
+  `;
   const res = await apiCall('getProjectLogs', { projectId });
-  const body = document.getElementById('projectLogsBody');
-  if (!body) return; // modal was closed before this resolved
-  if (!res.ok) { body.innerHTML = `<div class="empty-state">⚠️ ${escapeHtml(res.error)}</div>`; return; }
+  const body = document.getElementById('projectLogPageBody');
+  if (!body) return; // navigated away before this resolved
+  if (!res.ok) { body.outerHTML = `<div class="empty-state">⚠️ ${escapeHtml(res.error)}</div>`; return; }
   const logs = res.data.logs;
   if (logs.length === 0) {
-    body.innerHTML = '<div class="empty-state">No updates logged yet.</div>';
+    body.outerHTML = '<div class="empty-state">No updates logged yet for this project.</div>';
     return;
   }
-  body.innerHTML = `<div class="card-list">${logs.map(l => `
-    <div class="item-card" style="padding:14px 16px;">
+  body.outerHTML = `<div class="card-list">${logs.map(l => `
+    <div class="item-card">
       <div class="item-card-top" style="margin-bottom:4px;">
         <span class="pill ${UPDATE_TYPE_COLORS[l.type] || 'pill-neutral'}">${escapeHtml(l.type || '')}</span>
         <span style="font-family:var(--font-mono);font-size:11.5px;color:var(--ink-faint);">${formatDateDisplay(l.date)}${l.isToday ? ' · Today' : ''}</span>
       </div>
       <div style="font-size:13.5px;color:var(--ink-soft);">${escapeHtml(l.description)}</div>
-      ${l.isToday ? `<button class="link-btn" style="font-size:12px;margin-top:8px;" onclick="closeModal();openProjectCheckinEdit('${projectId}', {stopPropagation(){}})">Edit today's entry</button>` : ''}
+      ${l.isToday ? `<button class="link-btn" style="font-size:12px;margin-top:8px;" onclick="openProjectCheckinEdit('${projectId}', {stopPropagation(){}})">Edit today's entry</button>` : ''}
     </div>`).join('')}</div>`;
 }
 
@@ -1351,12 +1361,20 @@ function renderHistoryItem(h) {
   </div>`;
 }
 
+/** Patches one project in local state (no server refetch) and re-renders just the current tab. */
+function patchLocalProject(updatedProject) {
+  if (!state.workspaceData) return;
+  const idx = state.workspaceData.projects.findIndex(p => p.projectId === updatedProject.projectId);
+  if (idx !== -1) state.workspaceData.projects[idx] = { ...state.workspaceData.projects[idx], ...updatedProject };
+  renderWorkspaceTabContent();
+}
+
 async function updateProjectField(projectId, field, value) {
   const updates = {}; updates[field] = value;
   const res = await apiCall('updateProject', { projectId, updates });
   if (!res.ok) { showToast('⚠️ ' + res.error); return; }
   showToast('✓ Saved');
-  await openWorkspace(state.currentWorkspaceUserId);
+  patchLocalProject(res.data.project);
 }
 
 /* ============================================================
@@ -1396,7 +1414,7 @@ async function submitProjectModal() {
   const res = await apiCall('createProject', { project });
   if (!res.ok) { showToast('⚠️ ' + res.error); return; }
   closeModal(); showToast('✓ Project added — nice work');
-  await openWorkspace(state.currentWorkspaceUserId);
+  if (state.workspaceData) { state.workspaceData.projects.push(res.data.project); renderWorkspace(); }
 }
 
 function openIdeaModal() {
@@ -1420,7 +1438,7 @@ async function submitIdeaModal() {
   const res = await apiCall('createIdea', { idea });
   if (!res.ok) { showToast('⚠️ ' + res.error); return; }
   closeModal(); showToast('✓ Idea captured');
-  await openWorkspace(state.currentWorkspaceUserId);
+  if (state.workspaceData) { state.workspaceData.ideas.push(res.data.idea); renderWorkspace(); }
 }
 
 function openAdhocModal() {
@@ -1447,7 +1465,7 @@ async function submitAdhocModal() {
   const res = await apiCall('createAdhoc', { adhoc });
   if (!res.ok) { showToast('⚠️ ' + res.error); return; }
   closeModal(); showToast('✓ Logged — thanks for keeping this updated');
-  await openWorkspace(state.currentWorkspaceUserId);
+  if (state.workspaceData) { state.workspaceData.adhoc.push(res.data.adhoc); renderWorkspace(); }
 }
 
 /* ============================================================
